@@ -73,6 +73,8 @@ struct QuerySQLTests {
         #expect(record.matches("83617"))
         #expect(record.matches("active"))
         #expect(!record.matches("boise"))
+        #expect(record.columns.contains("General"))
+        #expect(record.columns.contains("Active"))
     }
 }
 

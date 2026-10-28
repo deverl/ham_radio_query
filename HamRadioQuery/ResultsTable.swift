@@ -41,7 +41,7 @@ struct ResultsTable: View {
         TableColumn("Call Sign", value: \.callSign) { record in
             Text(record.callSign).monospaced()
         }
-        .width(min: 84, ideal: 104)
+        .width(min: 76, ideal: ResultColumns.callSign, max: ResultColumns.callSign)
     }
 
     private var firstName: some TableColumnContent<LicenseRecord, KeyPathComparator<LicenseRecord>> {
@@ -66,43 +66,41 @@ struct ResultsTable: View {
 
     private var state: some TableColumnContent<LicenseRecord, KeyPathComparator<LicenseRecord>> {
         TableColumn("State", value: \.state)
-            .width(min: 52, ideal: 64)
+            .width(min: 52, ideal: ResultColumns.state, max: ResultColumns.state)
     }
 
     private var zip: some TableColumnContent<LicenseRecord, KeyPathComparator<LicenseRecord>> {
         TableColumn("ZIP", value: \.zip) { record in
             Text(record.zip).monospacedDigit()
         }
-        .width(min: 70, ideal: 88)
+        .width(min: 90, ideal: ResultColumns.zip, max: ResultColumns.zip)
     }
 
     private var operatorClass: some TableColumnContent<LicenseRecord, KeyPathComparator<LicenseRecord>> {
-        TableColumn("Operator Class", value: \.operatorClass) { record in
-            Text(record.operatorClass)
-                .help(OperatorClass.title(for: record.operatorClass))
+        TableColumn("Operator Class", value: \.operatorClassName) { record in
+            Text(record.operatorClassName)
         }
-        .width(min: 70, ideal: 110)
+        .width(min: 124, ideal: 140)
     }
 
     private var licenseStatus: some TableColumnContent<LicenseRecord, KeyPathComparator<LicenseRecord>> {
-        TableColumn("License Status", value: \.licenseStatus) { record in
-            Text(record.licenseStatus)
+        TableColumn("License Status", value: \.licenseStatusName) { record in
+            Text(record.licenseStatusName)
                 .foregroundStyle(record.licenseStatus == "A" ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .help(LicenseStatus.title(for: record.licenseStatus))
         }
-        .width(min: 70, ideal: 110)
+        .width(min: 172, ideal: 180)
     }
 
     private var frn: some TableColumnContent<LicenseRecord, KeyPathComparator<LicenseRecord>> {
         TableColumn("FRN", value: \.frn) { record in
             Text(record.frn).monospacedDigit()
         }
-        .width(min: 100, ideal: 120)
+        .width(min: 100, ideal: ResultColumns.frn, max: ResultColumns.frn)
     }
 
     private var region: some TableColumnContent<LicenseRecord, KeyPathComparator<LicenseRecord>> {
         TableColumn("Region Code", value: \.regionCode)
-            .width(min: 60, ideal: 90)
+            .width(min: 96, ideal: ResultColumns.region, max: ResultColumns.region)
     }
 
     private var dmr: some TableColumnContent<LicenseRecord, KeyPathComparator<LicenseRecord>> {
@@ -111,6 +109,19 @@ struct ResultsTable: View {
                 .foregroundStyle(record.dmrID.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
                 .monospacedDigit()
         }
-        .width(min: 70, ideal: 96)
+        .width(min: 76, ideal: ResultColumns.dmr, max: ResultColumns.dmr)
     }
+}
+
+/// Widths for the short columns, locked so they no longer stretch with the window.
+/// The table lays each column out about 17 points wider than the value passed to `.width`,
+/// so the default window is wide enough for that table without a horizontal scroller.
+enum ResultColumns {
+    static let callSign: CGFloat = 86
+    static let state: CGFloat = 58
+    static let zip: CGFloat = 100
+    static let frn: CGFloat = 108
+    static let region: CGFloat = 104
+    static let dmr: CGFloat = 88
+    static let defaultWindowWidth: CGFloat = 1640
 }

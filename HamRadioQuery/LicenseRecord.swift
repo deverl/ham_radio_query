@@ -15,6 +15,9 @@ struct LicenseRecord: Identifiable, Hashable, Sendable {
     let regionCode: String
     let dmrID: String
 
+    var operatorClassName: String { OperatorClass.title(for: operatorClass) }
+    var licenseStatusName: String { LicenseStatus.title(for: licenseStatus) }
+
     init(
         id: UUID = UUID(),
         callSign: String,
@@ -62,7 +65,7 @@ struct LicenseRecord: Identifiable, Hashable, Sendable {
     var columns: [String] {
         [
             callSign, firstName, lastName, streetAddress, city, state, zip,
-            operatorClass, licenseStatus, frn, regionCode, dmrID,
+            operatorClassName, licenseStatusName, frn, regionCode, dmrID,
         ]
     }
 

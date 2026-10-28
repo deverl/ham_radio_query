@@ -17,7 +17,7 @@ struct HamRadioQueryApp: App {
             ContentView(model: model)
                 .frame(minWidth: 900, minHeight: 520)
         }
-        .defaultSize(width: 1722, height: 865)
+        .defaultSize(width: ResultColumns.defaultWindowWidth, height: 865)
         .commands {
             LookupCommands(model: model)
         }
