@@ -43,100 +43,55 @@ enum DatabaseUpdater {
     static let radioIDURL = URL(string: "https://radioid.net/static/user.csv")!
 
     static func update(
-        settings: ConnectionSettings,
         session: DatabaseUpdateSession,
         progress: @escaping @MainActor (DatabaseUpdateSnapshot) -> Void
     ) async throws {
         try await Task.detached(priority: .userInitiated) {
-            try await perform(settings: settings, session: session, progress: progress)
+            try await perform(session: session, progress: progress)
         }.value
     }
 
-    @discardableResult
-    static func runMySQL(sql: String, settings: ConnectionSettings, workingDirectory: URL) throws -> String {
-        let mysql = try mysqlExecutable()
-        let config = workingDirectory.appendingPathComponent(".mysql-client.cnf")
-        try writeClientFile(settings: settings, to: config)
-        defer { try? FileManager.default.removeItem(at: config) }
-        return try run(
-            executable: mysql,
-            arguments: [
-                "--defaults-extra-file=\(config.path)",
-                "--local-infile=1",
-                "--protocol=TCP",
-                "--batch",
-                "--skip-column-names",
-            ],
-            currentDirectory: workingDirectory,
-            standardInput: sql
-        )
-    }
-
-    static func writeClientFile(settings: ConnectionSettings, to url: URL) throws {
-        let settings = settings.normalized()
-        guard !settings.host.isEmpty,
-              !settings.username.isEmpty,
-              (1...65535).contains(settings.port)
-        else {
-            throw DatabaseUpdateError.failed("The database connection settings are incomplete.", licensesLoaded: false)
-        }
-        guard !settings.host.contains(where: \.isNewline),
-              !settings.username.contains(where: \.isNewline),
-              !settings.password.contains(where: \.isNewline)
-        else {
-            throw DatabaseUpdateError.failed("The database connection settings contain a line break.", licensesLoaded: false)
-        }
-        let text = """
-        [client]
-        host=\(optionQuoted(settings.host))
-        port=\(settings.port)
-        user=\(optionQuoted(settings.username))
-        password=\(optionQuoted(settings.password))
-        local-infile=1
-
-        """
+    static func buildDatabase(
+        hd: URL,
+        en: URL,
+        am: URL,
+        csv: URL,
+        to destination: URL,
+        importedAt: Date = Date()
+    ) throws {
         let fileManager = FileManager.default
-        if fileManager.fileExists(atPath: url.path) {
-            try fileManager.removeItem(at: url)
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
         }
-        guard fileManager.createFile(
-            atPath: url.path,
-            contents: Data(text.utf8),
-            attributes: [.posixPermissions: 0o600]
-        ) else {
-            throw DatabaseUpdateError.failed("Could not write the database client settings.", licensesLoaded: false)
+        let workingDirectory = destination.deletingLastPathComponent()
+        try fileManager.createDirectory(at: workingDirectory, withIntermediateDirectories: true)
+        try sqlite(
+            DatabaseSchema.importScript(hd: hd.path, en: en.path, am: am.path),
+            database: destination,
+            workingDirectory: workingDirectory
+        )
+        try sqlite(
+            DatabaseSchema.dmrScript(csv: csv.path),
+            database: destination,
+            workingDirectory: workingDirectory
+        )
+        let count = try sqlite(
+            DatabaseSchema.finishScript(importedAt: LicenseStore.timestamp(importedAt)),
+            database: destination,
+            workingDirectory: workingDirectory
+        )
+        guard lastLine(count) != "0" else {
+            throw DatabaseUpdateError.failed("The license file did not contain any records.", databaseReplaced: false)
         }
-    }
-
-    static func optionQuoted(_ value: String) -> String {
-        var quoted = "\""
-        for character in value {
-            switch character {
-            case "\\", "\"":
-                quoted.append("\\")
-                quoted.append(character)
-            case "\n":
-                quoted.append("\\n")
-            case "\r":
-                quoted.append("\\r")
-            case "\t":
-                quoted.append("\\t")
-            default:
-                quoted.append(character)
-            }
-        }
-        quoted.append("\"")
-        return quoted
     }
 
     private static func perform(
-        settings: ConnectionSettings,
         session: DatabaseUpdateSession,
         progress: @escaping @MainActor (DatabaseUpdateSnapshot) -> Void
     ) async throws {
         let relay = ProgressRelay(progress: progress)
         defer { relay.invalidate() }
-        var licensesLoaded = false
+        var databaseReplaced = false
         do {
             relay.phase(DatabaseUpdateSnapshot(
                 status: "Preparing…",
@@ -145,7 +100,7 @@ enum DatabaseUpdater {
                 canCancel: true
             ))
             try prepareDirectory()
-            try checkCancelled(session, licensesLoaded: false)
+            try checkCancelled(session, databaseReplaced: false)
 
             let zipURL = directory.appendingPathComponent("l_amat.zip")
             let fccPhase = relay.phase(DatabaseUpdateSnapshot(
@@ -165,7 +120,7 @@ enum DatabaseUpdater {
                     generation: fccPhase
                 )
             }
-            try checkCancelled(session, licensesLoaded: false)
+            try checkCancelled(session, databaseReplaced: false)
             try requireDownloadSize(at: zipURL, minimum: 1_000_000, name: "FCC license file")
 
             relay.phase(DatabaseUpdateSnapshot(
@@ -178,21 +133,6 @@ enum DatabaseUpdater {
             let hd = try locate("HD.dat")
             let en = try locate("EN.dat")
             let am = try locate("AM.dat")
-            let database = try DatabaseSchema.validatedName(settings.database)
-
-            relay.phase(DatabaseUpdateSnapshot(
-                status: "Rebuilding license tables…",
-                fraction: nil,
-                detail: "This replaces the current license records and can take a few minutes.",
-                canCancel: false
-            ))
-            try runMySQL(
-                sql: DatabaseSchema.licenseSQL(database: database, hd: hd.path, en: en.path, am: am.path),
-                settings: settings,
-                workingDirectory: directory
-            )
-            licensesLoaded = true
-            try checkCancelled(session, licensesLoaded: true)
 
             let csvURL = directory.appendingPathComponent("user.csv")
             let radioPhase = relay.phase(DatabaseUpdateSnapshot(
@@ -212,23 +152,81 @@ enum DatabaseUpdater {
                     generation: radioPhase
                 )
             }
-            try checkCancelled(session, licensesLoaded: true)
+            try checkCancelled(session, databaseReplaced: false)
             try requireDownloadSize(at: csvURL, minimum: 1_000, name: "RadioID user list")
 
+            let staging = directory.appendingPathComponent("licenses.sqlite")
+            relay.phase(DatabaseUpdateSnapshot(
+                status: "Importing license records…",
+                fraction: nil,
+                detail: "This can take a few minutes.",
+                canCancel: false
+            ))
+            if FileManager.default.fileExists(atPath: staging.path) {
+                try FileManager.default.removeItem(at: staging)
+            }
+            try sqlite(
+                DatabaseSchema.importScript(hd: hd.path, en: en.path, am: am.path),
+                database: staging,
+                workingDirectory: directory
+            )
             relay.phase(DatabaseUpdateSnapshot(
                 status: "Importing DMR IDs…",
                 fraction: nil,
-                detail: "This replaces the current DMR records.",
+                detail: "",
                 canCancel: false
             ))
-            try runMySQL(
-                sql: DatabaseSchema.dmrSQL(database: database, csv: csvURL.path),
-                settings: settings,
+            try sqlite(
+                DatabaseSchema.dmrScript(csv: csvURL.path),
+                database: staging,
                 workingDirectory: directory
             )
+            relay.phase(DatabaseUpdateSnapshot(
+                status: "Indexing license records…",
+                fraction: nil,
+                detail: "This can take a few minutes.",
+                canCancel: false
+            ))
+            let count = try sqlite(
+                DatabaseSchema.finishScript(importedAt: LicenseStore.timestamp(Date())),
+                database: staging,
+                workingDirectory: directory
+            )
+            guard lastLine(count) != "0" else {
+                throw DatabaseUpdateError.failed(
+                    "The license file did not contain any records.",
+                    databaseReplaced: false
+                )
+            }
+
+            relay.phase(DatabaseUpdateSnapshot(
+                status: "Installing the database…",
+                fraction: nil,
+                detail: LicenseStore.databaseURL.path,
+                canCancel: false
+            ))
+            try LicenseStore.install(staging: staging)
+            databaseReplaced = true
         } catch {
-            throw map(error, licensesLoaded: licensesLoaded)
+            throw map(error, databaseReplaced: databaseReplaced)
         }
+    }
+
+    @discardableResult
+    private static func sqlite(_ script: String, database: URL, workingDirectory: URL) throws -> String {
+        let output = try run(
+            executable: "/usr/bin/sqlite3",
+            arguments: ["-batch", database.path],
+            currentDirectory: workingDirectory,
+            standardInput: script
+        )
+        if output.stderr.contains("expected"), output.stderr.contains("columns") {
+            throw DatabaseUpdateError.failed(
+                "The license file did not match the expected columns.\n\(tail(output.stderr))",
+                databaseReplaced: false
+            )
+        }
+        return output.stdout
     }
 
     private static func prepareDirectory() throws {
@@ -281,47 +279,26 @@ enum DatabaseUpdater {
         }
         throw DatabaseUpdateError.failed(
             "The FCC archive did not contain \(name).",
-            licensesLoaded: false
+            databaseReplaced: false
         )
     }
 
     private static func requireDownloadSize(at url: URL, minimum: Int, name: String) throws {
         let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
         guard size >= minimum else {
-            throw DatabaseUpdateError.failed("The \(name) download was incomplete.", licensesLoaded: false)
+            throw DatabaseUpdateError.failed("The \(name) download was incomplete.", databaseReplaced: false)
         }
     }
 
-    private static func checkCancelled(_ session: DatabaseUpdateSession, licensesLoaded: Bool) throws {
+    private static func checkCancelled(_ session: DatabaseUpdateSession, databaseReplaced: Bool) throws {
         if Task.isCancelled || session.isCancelled {
-            throw DatabaseUpdateError.cancelled(licensesLoaded: licensesLoaded)
+            throw DatabaseUpdateError.cancelled(databaseReplaced: databaseReplaced)
         }
     }
 
-    private static func mysqlExecutable() throws -> String {
-        let candidates = [
-            "/opt/homebrew/bin/mysql",
-            "/usr/local/bin/mysql",
-            "/opt/homebrew/opt/mariadb/bin/mysql",
-            "/opt/homebrew/opt/mysql/bin/mysql",
-        ]
-        let fileManager = FileManager.default
-        if let path = candidates.first(where: { fileManager.isExecutableFile(atPath: $0) }) {
-            return path
-        }
-        let found = try run(
-            executable: "/bin/zsh",
-            arguments: ["-lc", "command -v mysql"],
-            currentDirectory: URL(fileURLWithPath: "/tmp", isDirectory: true),
-            standardInput: nil
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !found.isEmpty, fileManager.isExecutableFile(atPath: found) {
-            return found
-        }
-        throw DatabaseUpdateError.failed(
-            "The mysql client was not found. Install MariaDB with Homebrew and try again.",
-            licensesLoaded: false
-        )
+    private struct CommandOutput {
+        var stdout: String
+        var stderr: String
     }
 
     @discardableResult
@@ -330,7 +307,7 @@ enum DatabaseUpdater {
         arguments: [String],
         currentDirectory: URL,
         standardInput: String?
-    ) throws -> String {
+    ) throws -> CommandOutput {
         let token = UUID().uuidString
         let stdoutURL = currentDirectory.appendingPathComponent(".command-stdout-\(token)")
         let stderrURL = currentDirectory.appendingPathComponent(".command-stderr-\(token)")
@@ -374,34 +351,34 @@ enum DatabaseUpdater {
             if errorText.isEmpty {
                 throw DatabaseUpdateError.failed(
                     "\(name) exited with status \(process.terminationStatus).",
-                    licensesLoaded: false
+                    databaseReplaced: false
                 )
             }
             throw DatabaseUpdateError.failed(
                 "\(name) exited with status \(process.terminationStatus).\n\(tail(errorText))",
-                licensesLoaded: false
+                databaseReplaced: false
             )
         }
-        return output
+        return CommandOutput(stdout: output, stderr: errorText)
     }
 
-    private static func map(_ error: Error, licensesLoaded: Bool) -> DatabaseUpdateError {
+    private static func map(_ error: Error, databaseReplaced: Bool) -> DatabaseUpdateError {
         if let update = error as? DatabaseUpdateError {
             switch update {
             case .cancelled:
-                return .cancelled(licensesLoaded: licensesLoaded)
+                return .cancelled(databaseReplaced: databaseReplaced)
             case .failed(let message, _):
-                return .failed(message, licensesLoaded: licensesLoaded)
+                return .failed(message, databaseReplaced: databaseReplaced)
             }
         }
         if error is CancellationError {
-            return .cancelled(licensesLoaded: licensesLoaded)
+            return .cancelled(databaseReplaced: databaseReplaced)
         }
         if let urlError = error as? URLError, urlError.code == .cancelled {
-            return .cancelled(licensesLoaded: licensesLoaded)
+            return .cancelled(databaseReplaced: databaseReplaced)
         }
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        return .failed(message, licensesLoaded: licensesLoaded)
+        return .failed(message, databaseReplaced: databaseReplaced)
     }
 
     private static func fraction(_ written: Int64, _ expected: Int64) -> Double? {
@@ -413,6 +390,10 @@ enum DatabaseUpdater {
         let writtenText = written.formatted(.byteCount(style: .file))
         guard expected > 0 else { return writtenText }
         return "\(writtenText) of \(expected.formatted(.byteCount(style: .file)))"
+    }
+
+    private static func lastLine(_ text: String) -> String {
+        text.split(whereSeparator: \.isNewline).last.map(String.init) ?? ""
     }
 
     private static func tail(_ text: String) -> String {
@@ -546,7 +527,7 @@ final class FileDownload: NSObject, URLSessionDownloadDelegate, @unchecked Senda
            !(200..<300).contains(response.statusCode) {
             moveError = DatabaseUpdateError.failed(
                 "The download failed (HTTP \(response.statusCode)).",
-                licensesLoaded: false
+                databaseReplaced: false
             )
             return
         }
@@ -574,10 +555,10 @@ final class FileDownload: NSObject, URLSessionDownloadDelegate, @unchecked Senda
                   !(200..<300).contains(response.statusCode) {
             result = .failure(DatabaseUpdateError.failed(
                 "The download failed (HTTP \(response.statusCode)).",
-                licensesLoaded: false
+                databaseReplaced: false
             ))
         } else {
-            result = .failure(DatabaseUpdateError.failed("The download did not finish.", licensesLoaded: false))
+            result = .failure(DatabaseUpdateError.failed("The download did not finish.", databaseReplaced: false))
         }
         finish(result)
         session.finishTasksAndInvalidate()

@@ -47,11 +47,25 @@ struct ContentView: View {
                 } label: {
                     Label("Database", systemImage: "server.rack")
                 }
-                .help("Database connection settings")
+                .help("License database")
             }
         }
-        .alert("Update License Database?", isPresented: $model.confirmDatabaseUpdate) {
-            Button("Update") {
+        .task {
+            model.offerDatabaseMaintenanceIfNeeded()
+        }
+        .alert(model.databaseNoticeTitle, isPresented: databaseNoticePresented) {
+            Button(model.databaseNoticeButton) {
+                Task { @MainActor in
+                    await Task.yield()
+                    model.startDatabaseUpdate()
+                }
+            }
+            Button(model.freshness.isMissing ? "Not Now" : "Later", role: .cancel) {}
+        } message: {
+            Text(model.databaseNoticeMessage)
+        }
+        .alert(model.maintenanceConfirmTitle, isPresented: $model.confirmDatabaseUpdate) {
+            Button(model.maintenanceConfirmButton) {
                 Task { @MainActor in
                     await Task.yield()
                     model.startDatabaseUpdate()
@@ -59,7 +73,7 @@ struct ContentView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This downloads the latest FCC amateur license file (about 190 MB) and the RadioID user list, then rebuilds the database. The current license tables are replaced. Downloaded files are left in /tmp/ham-radio-lookup.")
+            Text(model.maintenanceConfirmMessage)
         }
         .sheet(isPresented: $model.isPresentingUpdate) {
             DatabaseUpdateSheet(model: model)
@@ -129,6 +143,18 @@ struct ContentView: View {
                 description: Text("Enter a call sign, name, city, or state.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if model.freshness.isMissing && model.records.isEmpty {
+            ContentUnavailableView {
+                Label("License Database Needed", systemImage: "externaldrive.badge.plus")
+            } description: {
+                Text("The license database has not been created. Create it before searching.")
+            } actions: {
+                Button("Create Database…") {
+                    model.confirmDatabaseUpdate = true
+                }
+                .buttonStyle(.bordered)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.records.isEmpty {
             ContentUnavailableView {
                 Label("Ham Radio Lookup", systemImage: "antenna.radiowaves.left.and.right")
@@ -178,6 +204,17 @@ struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(Color.orange.opacity(0.12))
+    }
+
+    private var databaseNoticePresented: Binding<Bool> {
+        Binding(
+            get: { model.databaseNotice != nil },
+            set: { isPresented in
+                if !isPresented {
+                    model.databaseNotice = nil
+                }
+            }
+        )
     }
 
     private func showDatabaseSettings() {

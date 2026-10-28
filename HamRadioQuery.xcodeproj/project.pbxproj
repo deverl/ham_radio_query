@@ -115,7 +115,6 @@
 			);
 			name = HamRadioQuery;
 			packageProductDependencies = (
-				E1A10000000000000000001A /* MySQLNIO */,
 			);
 			productName = HamRadioQuery;
 			productReference = E1A100000000000000000006 /* HamRadioQuery.app */;
@@ -173,7 +172,6 @@
 			mainGroup = E1A100000000000000000002;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				E1A100000000000000000019 /* XCRemoteSwiftPackageReference "mysql-nio" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E1A100000000000000000003 /* Products */;
@@ -491,24 +489,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		E1A100000000000000000019 /* XCRemoteSwiftPackageReference "mysql-nio" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/vapor/mysql-nio.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.9.2;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		E1A10000000000000000001A /* MySQLNIO */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1A100000000000000000019 /* XCRemoteSwiftPackageReference "mysql-nio" */;
-			productName = MySQLNIO;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E1A100000000000000000001 /* Project object */;
 }

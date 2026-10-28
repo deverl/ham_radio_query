@@ -22,7 +22,8 @@ final class LookupModel {
     var hadCriteria = false
     var errorMessage: String?
     var isExporting = false
-    var connectionSettings: ConnectionSettings
+    var freshness: LicenseStore.Freshness = .missing
+    var databaseNotice: DatabaseNotice?
     var confirmDatabaseUpdate = false
     var isPresentingUpdate = false
     var isUpdatingDatabase = false
@@ -32,15 +33,19 @@ final class LookupModel {
     var updateDetail = ""
     var updateError: String?
 
+    var suppressDatabaseNotice = false
+
     private var databaseUpdateSession: DatabaseUpdateSession?
+    private var didOfferDatabaseMaintenance = false
 
     private let database: LicenseDatabase
     private var generation = 0
 
     init(database: LicenseDatabase? = nil) {
-        let settings = ConnectionSettings.load()
-        connectionSettings = settings
-        self.database = database ?? LicenseDatabase(settings: settings)
+        self.database = database ?? LicenseDatabase()
+        if database == nil {
+            freshness = LicenseStore.freshness()
+        }
     }
 
     var filteredRecords: [LicenseRecord] {
@@ -65,6 +70,15 @@ final class LookupModel {
 
     func search() {
         guard !isUpdatingDatabase else { return }
+        if freshness.isMissing {
+            records = []
+            hasSearched = false
+            hadCriteria = false
+            isSearching = false
+            errorMessage = nil
+            databaseNotice = .missing
+            return
+        }
         let query = makeQuery()
         generation += 1
         let token = generation
@@ -147,22 +161,81 @@ final class LookupModel {
         search()
     }
 
-    @discardableResult
-    func updateConnection(_ settings: ConnectionSettings) -> String? {
-        let normalized = settings.normalized()
-        connectionSettings = normalized
-        let warning = ConnectionSettings.save(normalized)
-        let database = database
-        Task {
-            await database.update(settings: normalized)
+    var maintenanceMenuTitle: String {
+        freshness.isMissing ? "Create License Database…" : "Update License Database…"
+    }
+
+    var maintenanceConfirmTitle: String {
+        freshness.isMissing ? "Create License Database?" : "Update License Database?"
+    }
+
+    var maintenanceConfirmButton: String {
+        freshness.isMissing ? "Create" : "Update"
+    }
+
+    var maintenanceConfirmMessage: String {
+        if freshness.isMissing {
+            return "The license database has not been created. This downloads the FCC amateur license file (about 190 MB) and the RadioID user list, then builds a database in \(LicenseStore.folderName). Downloaded files are left in /tmp/ham-radio-lookup."
         }
-        return warning
+        return "This downloads the latest FCC amateur license file (about 190 MB) and the RadioID user list, then replaces the license database. Downloaded files are left in /tmp/ham-radio-lookup."
+    }
+
+    var freshnessDescription: String {
+        switch freshness {
+        case .missing:
+            "Not created"
+        case .stale(let date), .current(let date):
+            date.formatted(date: .long, time: .shortened)
+        }
+    }
+
+    var databaseNoticeTitle: String {
+        switch databaseNotice {
+        case .missing, .none:
+            "License Database Needed"
+        case .stale:
+            "License Database Is Old"
+        }
+    }
+
+    var databaseNoticeMessage: String {
+        switch databaseNotice {
+        case .missing, .none:
+            "The license database has not been created. Create it before searching. This downloads the FCC amateur license file (about 190 MB) and the RadioID user list."
+        case .stale(let date):
+            "The license database was last built \(date.formatted(date: .long, time: .shortened)) and is more than 8 days old. It should be updated."
+        }
+    }
+
+    var databaseNoticeButton: String {
+        if case .stale = databaseNotice { return "Update" }
+        return "Create"
+    }
+
+    func offerDatabaseMaintenanceIfNeeded() {
+        guard !suppressDatabaseNotice else { return }
+        freshness = LicenseStore.freshness()
+        guard !didOfferDatabaseMaintenance else { return }
+        didOfferDatabaseMaintenance = true
+        switch freshness {
+        case .missing:
+            databaseNotice = .missing
+        case .stale(let date):
+            databaseNotice = .stale(date)
+        case .current:
+            break
+        }
+    }
+
+    func refreshFreshness() {
+        freshness = LicenseStore.freshness()
     }
 
     func startDatabaseUpdate() {
         guard !isUpdatingDatabase, !isSearching else { return }
         let session = DatabaseUpdateSession()
         databaseUpdateSession = session
+        databaseNotice = nil
         isPresentingUpdate = true
         isUpdatingDatabase = true
         updateCanCancel = true
@@ -170,10 +243,11 @@ final class LookupModel {
         updateStatus = "Preparing…"
         updateFraction = nil
         updateDetail = ""
-        let settings = connectionSettings
+        let creating = freshness.isMissing
+        NSApp.windows.first { $0.frameAutosaveName.contains("WindowGroup") }?.makeKeyAndOrderFront(nil)
         Task {
             do {
-                try await DatabaseUpdater.update(settings: settings, session: session) { snapshot in
+                try await DatabaseUpdater.update(session: session) { snapshot in
                     self.updateStatus = snapshot.status
                     self.updateFraction = snapshot.fraction
                     self.updateDetail = snapshot.detail
@@ -185,7 +259,8 @@ final class LookupModel {
                 hasSearched = false
                 hadCriteria = false
                 errorMessage = nil
-                updateStatus = "Database updated"
+                freshness = LicenseStore.freshness()
+                updateStatus = creating ? "Database created" : "Database updated"
                 updateDetail = "The new records are used the next time you search. Downloaded files remain in /tmp/ham-radio-lookup."
                 updateFraction = 1
                 updateCanCancel = false
@@ -206,6 +281,7 @@ final class LookupModel {
                 updateFraction = nil
                 updateCanCancel = false
             }
+            freshness = LicenseStore.freshness()
             isUpdatingDatabase = false
             databaseUpdateSession = nil
         }
@@ -231,6 +307,8 @@ final class LookupModel {
 
     static var preview: LookupModel {
         let model = LookupModel()
+        model.suppressDatabaseNotice = true
+        model.freshness = .current(importedAt: Date())
         model.city = "Emmett"
         model.state = "ID"
         model.records = LicenseRecord.samples
@@ -238,4 +316,9 @@ final class LookupModel {
         model.hadCriteria = true
         return model
     }
+}
+
+enum DatabaseNotice: Equatable {
+    case missing
+    case stale(Date)
 }

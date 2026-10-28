@@ -6,7 +6,6 @@ struct HamRadioQueryApp: App {
     @State private var model = LookupModel()
 
     init() {
-        LoggingBootstrap.configure()
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             NSApplication.shared.setActivationPolicy(.prohibited)
         }
@@ -23,7 +22,7 @@ struct HamRadioQueryApp: App {
         }
 
         Settings {
-            ConnectionSettingsView(model: model)
+            DatabaseStatusView(model: model)
         }
         .windowResizability(.contentSize)
     }
@@ -50,7 +49,7 @@ struct LookupCommands: Commands {
         }
 
         CommandMenu("Tools") {
-            Button("Update License Database…") {
+            Button(model.maintenanceMenuTitle) {
                 model.confirmDatabaseUpdate = true
             }
             .disabled(model.isUpdatingDatabase || model.isSearching)

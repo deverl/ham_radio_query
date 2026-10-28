@@ -51,15 +51,15 @@ enum LicenseSQL {
             parameters.append(callSign)
         }
         if !firstName.isEmpty {
-            clauses.append("en.first_name LIKE ?")
+            clauses.append("en.first_name LIKE ?" + sqlLikeEscape)
             parameters.append(likePrefix(firstName))
         }
         if !lastName.isEmpty {
-            clauses.append("en.last_name LIKE ?")
+            clauses.append("en.last_name LIKE ?" + sqlLikeEscape)
             parameters.append(likePrefix(lastName))
         }
         if !city.isEmpty {
-            clauses.append("en.city LIKE ?")
+            clauses.append("en.city LIKE ?" + sqlLikeEscape)
             parameters.append(likePrefix(city))
         }
         if !state.isEmpty {
@@ -91,7 +91,7 @@ enum LicenseSQL {
                hd.license_status AS license_status,
                en.frn AS frn,
                am.region_code AS region_code,
-               IF(dmr.radio_id IS NOT NULL, dmr.radio_id, '') AS dmr_id
+               IFNULL(dmr.radio_id, '') AS dmr_id
         FROM en
         JOIN hd ON hd.sys_id = en.sys_id
         JOIN am ON am.sys_id = en.sys_id
@@ -101,6 +101,9 @@ enum LicenseSQL {
         """
         return SQLStatement(sql: sql, parameters: parameters)
     }
+
+    /// SQLite needs an explicit escape character. The clause is `ESCAPE '\'`.
+    private static let sqlLikeEscape = " ESCAPE " + "'" + "\\" + "'"
 
     /// Prefix match with `%` and `_` treated as ordinary characters.
     static func likePrefix(_ value: String) -> String {
