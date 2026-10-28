@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Bindable var model: LookupModel
     @FocusState private var filterFocused: Bool
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,7 +43,7 @@ struct ContentView: View {
             }
             ToolbarItem {
                 Button {
-                    openSettings()
+                    showDatabaseSettings()
                 } label: {
                     Label("Database", systemImage: "server.rack")
                 }
@@ -106,8 +107,9 @@ struct ContentView: View {
                 Text(errorMessage)
             } actions: {
                 Button("Database Settings…") {
-                    openSettings()
+                    showDatabaseSettings()
                 }
+                .buttonStyle(.bordered)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.isSearching && model.records.isEmpty {
@@ -170,7 +172,7 @@ struct ContentView: View {
             Text(message)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Database Settings…") {
-                openSettings()
+                showDatabaseSettings()
             }
         }
         .padding(.horizontal, 16)
@@ -178,8 +180,52 @@ struct ContentView: View {
         .background(Color.orange.opacity(0.12))
     }
 
-    private func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    private func showDatabaseSettings() {
+        openSettings()
+        Task { @MainActor in
+            if await revealSettingsWindow() { return }
+            performSettingsMenuItem()
+            _ = await revealSettingsWindow()
+        }
+    }
+
+    /// SwiftUI creates the settings window on a later turn, and it can open behind this window.
+    private func revealSettingsWindow() async -> Bool {
+        for _ in 0..<8 {
+            if let window = NSApp.windows.first(where: { $0.frameAutosaveName == "com_apple_SwiftUI_Settings_window" }) {
+                placeOnScreen(window)
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate()
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(40))
+        }
+        return false
+    }
+
+    private func performSettingsMenuItem() {
+        let selector = Selector(("showSettingsWindow:"))
+        guard let menu = NSApp.mainMenu else { return }
+        for item in menu.items {
+            guard let submenu = item.submenu,
+                  let index = submenu.items.firstIndex(where: { $0.action == selector })
+            else { continue }
+            submenu.performActionForItem(at: index)
+            return
+        }
+    }
+
+    private func placeOnScreen(_ window: NSWindow) {
+        guard let screen = window.screen ?? NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        var frame = window.frame
+        let visiblePart = visible.intersection(frame)
+        if visiblePart.width > 80, visiblePart.height > 80 { return }
+        frame.size.width = min(frame.width, visible.width)
+        frame.size.height = min(frame.height, visible.height)
+        frame.origin.x = visible.midX - frame.width / 2
+        frame.origin.y = visible.midY - frame.height / 2
+        window.setFrame(frame, display: true)
     }
 }
 
