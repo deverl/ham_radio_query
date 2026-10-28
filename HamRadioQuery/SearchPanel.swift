@@ -45,7 +45,7 @@ struct SearchPanel: View {
                 Button("Clear") {
                     model.clear()
                 }
-                .disabled(model.isSearching)
+                .disabled(model.isSearching || model.isUpdatingDatabase)
                 if model.isSearching {
                     ProgressView()
                         .controlSize(.small)
@@ -55,7 +55,7 @@ struct SearchPanel: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(model.isSearching)
+                .disabled(model.isSearching || model.isUpdatingDatabase)
             }
 
             if optionsExpanded {

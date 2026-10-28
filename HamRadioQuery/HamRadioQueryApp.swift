@@ -48,5 +48,12 @@ struct LookupCommands: Commands {
             .keyboardShortcut("c", modifiers: [.command, .shift])
             .disabled(model.selection.isEmpty)
         }
+
+        CommandMenu("Tools") {
+            Button("Update License Database…") {
+                model.confirmDatabaseUpdate = true
+            }
+            .disabled(model.isUpdatingDatabase || model.isSearching)
+        }
     }
 }

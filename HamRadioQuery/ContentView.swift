@@ -49,6 +49,20 @@ struct ContentView: View {
                 .help("Database connection settings")
             }
         }
+        .alert("Update License Database?", isPresented: $model.confirmDatabaseUpdate) {
+            Button("Update") {
+                Task { @MainActor in
+                    await Task.yield()
+                    model.startDatabaseUpdate()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This downloads the latest FCC amateur license file (about 190 MB) and the RadioID user list, then rebuilds the database. The current license tables are replaced. Downloaded files are left in /tmp/ham-radio-lookup.")
+        }
+        .sheet(isPresented: $model.isPresentingUpdate) {
+            DatabaseUpdateSheet(model: model)
+        }
         .fileExporter(
             isPresented: $model.isExporting,
             document: CSVDocument(text: LicenseRecord.csv(model.filteredRecords)),

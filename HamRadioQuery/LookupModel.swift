@@ -23,6 +23,16 @@ final class LookupModel {
     var errorMessage: String?
     var isExporting = false
     var connectionSettings: ConnectionSettings
+    var confirmDatabaseUpdate = false
+    var isPresentingUpdate = false
+    var isUpdatingDatabase = false
+    var updateCanCancel = false
+    var updateStatus = "Preparing…"
+    var updateFraction: Double?
+    var updateDetail = ""
+    var updateError: String?
+
+    private var databaseUpdateSession: DatabaseUpdateSession?
 
     private let database: LicenseDatabase
     private var generation = 0
@@ -54,6 +64,7 @@ final class LookupModel {
     }
 
     func search() {
+        guard !isUpdatingDatabase else { return }
         let query = makeQuery()
         generation += 1
         let token = generation
@@ -146,6 +157,63 @@ final class LookupModel {
             await database.update(settings: normalized)
         }
         return warning
+    }
+
+    func startDatabaseUpdate() {
+        guard !isUpdatingDatabase, !isSearching else { return }
+        let session = DatabaseUpdateSession()
+        databaseUpdateSession = session
+        isPresentingUpdate = true
+        isUpdatingDatabase = true
+        updateCanCancel = true
+        updateError = nil
+        updateStatus = "Preparing…"
+        updateFraction = nil
+        updateDetail = ""
+        let settings = connectionSettings
+        Task {
+            do {
+                try await DatabaseUpdater.update(settings: settings, session: session) { snapshot in
+                    self.updateStatus = snapshot.status
+                    self.updateFraction = snapshot.fraction
+                    self.updateDetail = snapshot.detail
+                    self.updateCanCancel = snapshot.canCancel
+                }
+                records = []
+                selection = []
+                filter = ""
+                hasSearched = false
+                hadCriteria = false
+                errorMessage = nil
+                updateStatus = "Database updated"
+                updateDetail = "The new records are used the next time you search. Downloaded files remain in /tmp/ham-radio-lookup."
+                updateFraction = 1
+                updateCanCancel = false
+            } catch let error as DatabaseUpdateError {
+                if error.replacedLicenseTables {
+                    records = []
+                    selection = []
+                    filter = ""
+                    hasSearched = false
+                    hadCriteria = false
+                    errorMessage = nil
+                }
+                updateError = error.localizedDescription
+                updateFraction = nil
+                updateCanCancel = false
+            } catch {
+                updateError = error.localizedDescription
+                updateFraction = nil
+                updateCanCancel = false
+            }
+            isUpdatingDatabase = false
+            databaseUpdateSession = nil
+        }
+    }
+
+    func cancelDatabaseUpdate() {
+        guard updateCanCancel else { return }
+        databaseUpdateSession?.cancel()
     }
 
     private func makeQuery() -> LicenseQuery {
