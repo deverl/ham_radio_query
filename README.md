@@ -127,19 +127,12 @@ Open `HamRadioQuery.xcodeproj` and run the **HamRadioQuery** scheme.
 A Release build from the command line:
 
 ```sh
-xcodebuild \
-  -project HamRadioQuery.xcodeproj \
-  -scheme HamRadioQuery \
-  -configuration Release \
-  -destination 'platform=macOS' \
-  -derivedDataPath build/DerivedData \
-  CONFIGURATION_BUILD_DIR="$PWD/build/Release" \
-  build
+bin/build.sh
 ```
 
-The app is written to `build/Release/HamRadioQuery.app`. The `build` directory is gitignored.
+The script moves to the project directory, so you can run it from anywhere. It builds the **HamRadioQuery** scheme in the Release configuration. When that build succeeds and the app bundle was produced, the script copies it to `HamRadioQuery.app` in the project directory. A failed build leaves that copy unchanged. Intermediate build files stay in `build/`, which is gitignored.
 
-Quit any running copy before opening that app. macOS will keep using the copy that is already running because both use the bundle ID `com.dstokes.HamRadioQuery`.
+Quit any running copy before opening `HamRadioQuery.app`. macOS will keep using the copy that is already running because both use the bundle ID `com.dstokes.HamRadioQuery`.
 
 Unit tests:
 
