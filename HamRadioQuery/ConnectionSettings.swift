@@ -101,7 +101,7 @@ struct ConnectionSettings: Equatable, Sendable {
 }
 
 private enum PasswordStore {
-    private static let service = "com.dstokes.HamRadioQuery"
+    private static let service = "us.ds6.HamRadioQuery"
     private static let account = "database-password"
 
     static func load() -> String? {

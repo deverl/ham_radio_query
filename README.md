@@ -2,7 +2,7 @@
 
 Ham Radio Lookup is a macOS app for searching United States amateur radio licenses. It reads either a MySQL database or a SQLite file built from the FCC Universal Licensing System amateur file and the RadioID DMR user list. Searches run on your Mac. The app does not send a query to a server.
 
-The window is titled **Ham Radio Lookup**. The Xcode project and the app bundle are named `HamRadioQuery` (`com.dstokes.HamRadioQuery`).
+The window is titled **Ham Radio Lookup**. The Xcode project and the app bundle are named `HamRadioQuery` (`us.ds6.HamRadioQuery`).
 
 ## What you can look up
 
@@ -115,7 +115,7 @@ Double-clicking a row, or choosing **Search This Call Sign**, puts that call sig
 | File | Location |
 | --- | --- |
 | SQLite license database | `~/Library/Application Support/Ham Radio Query/licenses.sqlite` |
-| MySQL password | Keychain item for `com.dstokes.HamRadioQuery` |
+| MySQL password | Keychain item for `us.ds6.HamRadioQuery` |
 | FCC and RadioID downloads | `/tmp/ham-radio-lookup` |
 
 The SQLite folder is created when the first SQLite import succeeds. Deleting `licenses.sqlite` makes the app treat that file as missing. The age check uses the import time stored inside the file, not the file's modification date. The MySQL database stays on the server you configured.
@@ -132,7 +132,7 @@ bin/build.sh
 
 The script moves to the project directory, so you can run it from anywhere. It builds the **HamRadioQuery** scheme in the Release configuration. When that build succeeds and the app bundle was produced, the script copies it to `HamRadioQuery.app` in the project directory. A failed build leaves that copy unchanged. Intermediate build files stay in `build/`, which is gitignored.
 
-Quit any running copy before opening `HamRadioQuery.app`. macOS will keep using the copy that is already running because both use the bundle ID `com.dstokes.HamRadioQuery`.
+Quit any running copy before opening `HamRadioQuery.app`. macOS will keep using the copy that is already running because both use the bundle ID `us.ds6.HamRadioQuery`.
 
 Unit tests:
 

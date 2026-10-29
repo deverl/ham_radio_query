@@ -377,7 +377,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dstokes.HamRadioQuery;
+				PRODUCT_BUNDLE_IDENTIFIER = us.ds6.HamRadioQuery;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -407,7 +407,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dstokes.HamRadioQuery;
+				PRODUCT_BUNDLE_IDENTIFIER = us.ds6.HamRadioQuery;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -429,7 +429,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dstokes.HamRadioQueryTests;
+				PRODUCT_BUNDLE_IDENTIFIER = us.ds6.HamRadioQueryTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HamRadioQuery.app/Contents/MacOS/HamRadioQuery";
@@ -452,7 +452,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dstokes.HamRadioQueryTests;
+				PRODUCT_BUNDLE_IDENTIFIER = us.ds6.HamRadioQueryTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HamRadioQuery.app/Contents/MacOS/HamRadioQuery";
