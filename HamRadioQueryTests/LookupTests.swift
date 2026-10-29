@@ -52,8 +52,8 @@ struct QuerySQLTests {
         )
         let statement = try #require(LicenseSQL.statement(for: query))
         let whereClause = statement.sql.components(separatedBy: "WHERE ").last ?? ""
-        #expect(statement.parameters == ["Jo\\_n%", "100\\%%", "ID"])
-        #expect(whereClause.contains("ESCAPE " + "'" + "\\" + "'"))
+        #expect(statement.parameters == ["Jo!_n%", "100!%%", "ID"])
+        #expect(whereClause.contains("ESCAPE '!'"))
         #expect(!whereClause.contains("license_status"))
         #expect(!whereClause.contains("operator_class"))
     }
@@ -85,6 +85,7 @@ struct MissingDatabaseTests {
     @Test func searchExplainsThatTheDatabaseMustBeCreated() {
         let model = LookupModel()
         model.suppressDatabaseNotice = true
+        model.engine = .sqlite
         model.freshness = .missing
         model.callSign = "W7DNS"
         model.search()

@@ -1,6 +1,6 @@
 # Ham Radio Lookup
 
-Ham Radio Lookup is a macOS app for searching United States amateur radio licenses. It reads a local database built from the FCC Universal Licensing System amateur file and the RadioID DMR user list. Searches run on your Mac. The app does not send a query to a server.
+Ham Radio Lookup is a macOS app for searching United States amateur radio licenses. It reads either a MySQL database or a SQLite file built from the FCC Universal Licensing System amateur file and the RadioID DMR user list. Searches run on your Mac. The app does not send a query to a server.
 
 The window is titled **Ham Radio Lookup**. The Xcode project and the app bundle are named `HamRadioQuery` (`com.dstokes.HamRadioQuery`).
 
@@ -28,27 +28,29 @@ Operator class and license status are stored as the FCC's single-letter codes an
 
 The license file is about 190 MB. Building the database also downloads the RadioID user list and can take several minutes.
 
-## Create the database
+## Choose a database
 
-The app does not include license data. On the first launch it tells you the database has not been created, and **Search** stays disabled until one exists.
+Open **Settings**, or click **Database** in the toolbar. The **Database** choice is a pair of radio buttons.
 
-Create it in any of these ways:
+**SQLite** is the default. It uses a file on this Mac, and the settings window shows that file's path and when it was last built. No MySQL server is required.
 
-- Click **Create Database…** in the main window
-- Choose **Tools > Create License Database…**
-- Open **Settings** (or click **Database** in the toolbar) and click **Create Database…**
+**MySQL** shows the host, port, database name, username, and password. **Test Connection** checks those values without saving them. **Save** stores the host, port, database, and username, and stores the password in the Keychain. **Update Database…** rebuilds the license tables on that server. The usual local values are host `127.0.0.1`, port `3306`, database `fcc`, and user `fccuser`.
 
-Confirm **Create**. The app then:
+## Create or update the database
 
-1. Downloads `l_amat.zip` from the FCC (`https://data.fcc.gov/download/pub/uls/complete/l_amat.zip`)
-2. Unzips the license files
-3. Downloads `user.csv` from RadioID (`https://radioid.net/static/user.csv`)
-4. Imports the FCC HD, EN, and AM records and the RadioID list into a new SQLite file
-5. Indexes that file and moves it into place
+The app does not include license data.
 
-You can cancel while a download is in progress. Import and indexing cannot be cancelled. If a later step fails, the previous database is left as it was.
+With **SQLite** selected, the first launch says the database has not been created, and **Search** stays disabled until one exists. Create it from the main window, from **Tools > Create License Database…**, or from **Create Database…** in Settings. The finished file is installed only after the import succeeds, so a failed update leaves the previous file in place. If the file is more than 8 days old, the app asks you to update it, and search still works.
 
-Downloaded files stay in `/tmp/ham-radio-lookup` until the next restart. The next create or update removes that folder and downloads fresh copies.
+With **MySQL** selected, use **Update Database…** in Settings or **Tools > Update License Database…**. That rebuilds the license tables in the MySQL database named in Settings. Search stays available. If the server is not running, the search explains that it could not connect.
+
+Either choice downloads the same files:
+
+1. `l_amat.zip` from the FCC (`https://data.fcc.gov/download/pub/uls/complete/l_amat.zip`)
+2. The license files inside that archive
+3. `user.csv` from RadioID (`https://radioid.net/static/user.csv`)
+
+You can cancel while a download is in progress. Import cannot be cancelled. Downloaded files stay in `/tmp/ham-radio-lookup` until the next restart. The next create or update removes that folder and downloads fresh copies.
 
 ## Search
 
@@ -91,22 +93,15 @@ Copy and export use the full operator class and license status names. The sugges
 
 Double-clicking a row, or choosing **Search This Call Sign**, puts that call sign in the search field, clears the name, city, and state, and searches again. That action applies to one row.
 
-## Update the database
-
-The database records when it was built. If that time is more than 8 days ago, the app asks you to update it. You can keep searching the old data. Search stays disabled when the file is missing, unreadable, or has no import time stored in it.
-
-Update from **Tools > Update License Database…**, from **Settings**, or from the **Database** toolbar button. Updating downloads the FCC and RadioID files again and replaces `licenses.sqlite` only after the new file is finished.
-
-Settings shows the database path and the last time it was built.
-
 ## Where files are stored
 
 | File | Location |
 | --- | --- |
-| License database | `~/Library/Application Support/Ham Radio Query/licenses.sqlite` |
+| SQLite license database | `~/Library/Application Support/Ham Radio Query/licenses.sqlite` |
+| MySQL password | Keychain item for `com.dstokes.HamRadioQuery` |
 | FCC and RadioID downloads | `/tmp/ham-radio-lookup` |
 
-The database folder is created when the first import succeeds. Deleting `licenses.sqlite` makes the app treat the database as missing. The age check uses the import time stored inside the file, not the file's modification date.
+The SQLite folder is created when the first SQLite import succeeds. Deleting `licenses.sqlite` makes the app treat that file as missing. The age check uses the import time stored inside the file, not the file's modification date. The MySQL database stays on the server you configured.
 
 ## Build and run
 

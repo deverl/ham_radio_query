@@ -22,6 +22,8 @@ final class LookupModel {
     var hadCriteria = false
     var errorMessage: String?
     var isExporting = false
+    var engine: DatabaseEngine
+    var connectionSettings: ConnectionSettings
     var freshness: LicenseStore.Freshness = .missing
     var databaseNotice: DatabaseNotice?
     var confirmDatabaseUpdate = false
@@ -42,10 +44,18 @@ final class LookupModel {
     private var generation = 0
 
     init(database: LicenseDatabase? = nil) {
-        self.database = database ?? LicenseDatabase()
-        if database == nil {
+        let engine = DatabaseEngine.load()
+        let settings = ConnectionSettings.load()
+        self.engine = engine
+        self.connectionSettings = settings
+        self.database = database ?? LicenseDatabase(engine: engine, settings: settings)
+        if database == nil, engine == .sqlite {
             freshness = LicenseStore.freshness()
         }
+    }
+
+    var searchUnavailable: Bool {
+        engine == .sqlite && freshness.isMissing
     }
 
     var filteredRecords: [LicenseRecord] {
@@ -70,7 +80,7 @@ final class LookupModel {
 
     func search() {
         guard !isUpdatingDatabase else { return }
-        if freshness.isMissing {
+        if searchUnavailable {
             records = []
             hasSearched = false
             hadCriteria = false
@@ -162,22 +172,34 @@ final class LookupModel {
     }
 
     var maintenanceMenuTitle: String {
-        freshness.isMissing ? "Create License Database…" : "Update License Database…"
+        if engine == .sqlite, freshness.isMissing {
+            return "Create License Database…"
+        }
+        return "Update License Database…"
     }
 
     var maintenanceConfirmTitle: String {
-        freshness.isMissing ? "Create License Database?" : "Update License Database?"
+        if engine == .sqlite, freshness.isMissing {
+            return "Create License Database?"
+        }
+        return "Update License Database?"
     }
 
     var maintenanceConfirmButton: String {
-        freshness.isMissing ? "Create" : "Update"
+        if engine == .sqlite, freshness.isMissing {
+            return "Create"
+        }
+        return "Update"
     }
 
     var maintenanceConfirmMessage: String {
+        if engine == .mysql {
+            return "This downloads the latest FCC amateur license file (about 190 MB) and the RadioID user list, then rebuilds the MySQL database \(connectionSettings.database). The current license tables are replaced. Downloaded files are left in /tmp/ham-radio-lookup."
+        }
         if freshness.isMissing {
             return "The license database has not been created. This downloads the FCC amateur license file (about 190 MB) and the RadioID user list, then builds a database in \(LicenseStore.folderName). Downloaded files are left in /tmp/ham-radio-lookup."
         }
-        return "This downloads the latest FCC amateur license file (about 190 MB) and the RadioID user list, then replaces the license database. Downloaded files are left in /tmp/ham-radio-lookup."
+        return "This downloads the latest FCC amateur license file (about 190 MB) and the RadioID user list, then replaces the SQLite license database. Downloaded files are left in /tmp/ham-radio-lookup."
     }
 
     var freshnessDescription: String {
@@ -212,8 +234,39 @@ final class LookupModel {
         return "Create"
     }
 
+    func applyEngine(_ engine: DatabaseEngine) {
+        DatabaseEngine.save(engine)
+        databaseNotice = nil
+        let database = database
+        let settings = connectionSettings
+        Task { await database.use(engine: engine, settings: settings) }
+        if engine == .sqlite {
+            refreshFreshness()
+            guard !suppressDatabaseNotice else { return }
+            switch freshness {
+            case .missing:
+                databaseNotice = .missing
+            case .stale(let date):
+                databaseNotice = .stale(date)
+            case .current:
+                break
+            }
+        }
+    }
+
+    @discardableResult
+    func updateConnection(_ settings: ConnectionSettings) -> String? {
+        let normalized = settings.normalized()
+        connectionSettings = normalized
+        let warning = ConnectionSettings.save(normalized)
+        let database = database
+        let engine = engine
+        Task { await database.use(engine: engine, settings: normalized) }
+        return warning
+    }
+
     func offerDatabaseMaintenanceIfNeeded() {
-        guard !suppressDatabaseNotice else { return }
+        guard !suppressDatabaseNotice, engine == .sqlite else { return }
         freshness = LicenseStore.freshness()
         guard !didOfferDatabaseMaintenance else { return }
         didOfferDatabaseMaintenance = true
@@ -243,11 +296,13 @@ final class LookupModel {
         updateStatus = "Preparing…"
         updateFraction = nil
         updateDetail = ""
-        let creating = freshness.isMissing
+        let creating = engine == .sqlite && freshness.isMissing
+        let engine = engine
+        let settings = connectionSettings
         NSApp.windows.first { $0.frameAutosaveName.contains("WindowGroup") }?.makeKeyAndOrderFront(nil)
         Task {
             do {
-                try await DatabaseUpdater.update(session: session) { snapshot in
+                try await DatabaseUpdater.update(engine: engine, settings: settings, session: session) { snapshot in
                     self.updateStatus = snapshot.status
                     self.updateFraction = snapshot.fraction
                     self.updateDetail = snapshot.detail

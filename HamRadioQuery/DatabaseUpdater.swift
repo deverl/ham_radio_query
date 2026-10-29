@@ -43,11 +43,18 @@ enum DatabaseUpdater {
     static let radioIDURL = URL(string: "https://radioid.net/static/user.csv")!
 
     static func update(
+        engine: DatabaseEngine,
+        settings: ConnectionSettings,
         session: DatabaseUpdateSession,
         progress: @escaping @MainActor (DatabaseUpdateSnapshot) -> Void
     ) async throws {
         try await Task.detached(priority: .userInitiated) {
-            try await perform(session: session, progress: progress)
+            switch engine {
+            case .sqlite:
+                try await perform(session: session, progress: progress)
+            case .mysql:
+                try await performMySQL(settings: settings, session: session, progress: progress)
+            }
         }.value
     }
 
@@ -227,6 +234,211 @@ enum DatabaseUpdater {
             )
         }
         return output.stdout
+    }
+
+    @discardableResult
+    static func runMySQL(sql: String, settings: ConnectionSettings, workingDirectory: URL) throws -> String {
+        let mysql = try mysqlExecutable()
+        let config = workingDirectory.appendingPathComponent(".mysql-client.cnf")
+        try writeClientFile(settings: settings, to: config)
+        defer { try? FileManager.default.removeItem(at: config) }
+        return try run(
+            executable: mysql,
+            arguments: [
+                "--defaults-extra-file=\(config.path)",
+                "--local-infile=1",
+                "--protocol=TCP",
+                "--batch",
+                "--skip-column-names",
+            ],
+            currentDirectory: workingDirectory,
+            standardInput: sql
+        ).stdout
+    }
+
+    static func writeClientFile(settings: ConnectionSettings, to url: URL) throws {
+        let settings = settings.normalized()
+        guard !settings.host.isEmpty,
+              !settings.username.isEmpty,
+              (1...65535).contains(settings.port)
+        else {
+            throw DatabaseUpdateError.failed("The database connection settings are incomplete.", databaseReplaced: false)
+        }
+        guard !settings.host.contains(where: \.isNewline),
+              !settings.username.contains(where: \.isNewline),
+              !settings.password.contains(where: \.isNewline)
+        else {
+            throw DatabaseUpdateError.failed("The database connection settings contain a line break.", databaseReplaced: false)
+        }
+        let text = """
+        [client]
+        host=\(optionQuoted(settings.host))
+        port=\(settings.port)
+        user=\(optionQuoted(settings.username))
+        password=\(optionQuoted(settings.password))
+        local-infile=1
+
+        """
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: url.path) {
+            try fileManager.removeItem(at: url)
+        }
+        guard fileManager.createFile(
+            atPath: url.path,
+            contents: Data(text.utf8),
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw DatabaseUpdateError.failed("Could not write the database client settings.", databaseReplaced: false)
+        }
+    }
+
+    static func optionQuoted(_ value: String) -> String {
+        var quoted = "\""
+        for character in value {
+            switch character {
+            case "\\", "\"":
+                quoted.append("\\")
+                quoted.append(character)
+            case "\n":
+                quoted.append("\\n")
+            case "\r":
+                quoted.append("\\r")
+            case "\t":
+                quoted.append("\\t")
+            default:
+                quoted.append(character)
+            }
+        }
+        quoted.append("\"")
+        return quoted
+    }
+
+    private static func performMySQL(
+        settings: ConnectionSettings,
+        session: DatabaseUpdateSession,
+        progress: @escaping @MainActor (DatabaseUpdateSnapshot) -> Void
+    ) async throws {
+        let relay = ProgressRelay(progress: progress)
+        defer { relay.invalidate() }
+        var databaseReplaced = false
+        do {
+            relay.phase(DatabaseUpdateSnapshot(
+                status: "Preparing…",
+                fraction: nil,
+                detail: "",
+                canCancel: true
+            ))
+            try prepareDirectory()
+            try checkCancelled(session, databaseReplaced: false)
+
+            let zipURL = directory.appendingPathComponent("l_amat.zip")
+            let fccPhase = relay.phase(DatabaseUpdateSnapshot(
+                status: "Downloading FCC license file…",
+                fraction: nil,
+                detail: "",
+                canCancel: true
+            ))
+            try await download(fccURL, to: zipURL, session: session) { written, expected in
+                relay.report(
+                    DatabaseUpdateSnapshot(
+                        status: "Downloading FCC license file…",
+                        fraction: fraction(written, expected),
+                        detail: byteDetail(written, expected),
+                        canCancel: true
+                    ),
+                    generation: fccPhase
+                )
+            }
+            try checkCancelled(session, databaseReplaced: false)
+            try requireDownloadSize(at: zipURL, minimum: 1_000_000, name: "FCC license file")
+
+            relay.phase(DatabaseUpdateSnapshot(
+                status: "Extracting license files…",
+                fraction: nil,
+                detail: "",
+                canCancel: false
+            ))
+            try extract(zipURL)
+            let hd = try locate("HD.dat")
+            let en = try locate("EN.dat")
+            let am = try locate("AM.dat")
+            let database = try DatabaseSchema.validatedName(settings.database)
+
+            relay.phase(DatabaseUpdateSnapshot(
+                status: "Rebuilding license tables…",
+                fraction: nil,
+                detail: "This replaces the current license records and can take a few minutes.",
+                canCancel: false
+            ))
+            try runMySQL(
+                sql: DatabaseSchema.licenseSQL(database: database, hd: hd.path, en: en.path, am: am.path),
+                settings: settings,
+                workingDirectory: directory
+            )
+            databaseReplaced = true
+            try checkCancelled(session, databaseReplaced: true)
+
+            let csvURL = directory.appendingPathComponent("user.csv")
+            let radioPhase = relay.phase(DatabaseUpdateSnapshot(
+                status: "Downloading RadioID user list…",
+                fraction: nil,
+                detail: "",
+                canCancel: true
+            ))
+            try await download(radioIDURL, to: csvURL, session: session) { written, expected in
+                relay.report(
+                    DatabaseUpdateSnapshot(
+                        status: "Downloading RadioID user list…",
+                        fraction: fraction(written, expected),
+                        detail: byteDetail(written, expected),
+                        canCancel: true
+                    ),
+                    generation: radioPhase
+                )
+            }
+            try checkCancelled(session, databaseReplaced: true)
+            try requireDownloadSize(at: csvURL, minimum: 1_000, name: "RadioID user list")
+
+            relay.phase(DatabaseUpdateSnapshot(
+                status: "Importing DMR IDs…",
+                fraction: nil,
+                detail: "This replaces the current DMR records.",
+                canCancel: false
+            ))
+            try runMySQL(
+                sql: DatabaseSchema.dmrSQL(database: database, csv: csvURL.path),
+                settings: settings,
+                workingDirectory: directory
+            )
+        } catch {
+            throw map(error, databaseReplaced: databaseReplaced)
+        }
+    }
+
+    private static func mysqlExecutable() throws -> String {
+        let candidates = [
+            "/opt/homebrew/bin/mysql",
+            "/usr/local/bin/mysql",
+            "/opt/homebrew/opt/mariadb/bin/mysql",
+            "/opt/homebrew/opt/mysql/bin/mysql",
+        ]
+        let fileManager = FileManager.default
+        if let path = candidates.first(where: { fileManager.isExecutableFile(atPath: $0) }) {
+            return path
+        }
+        let found = try run(
+            executable: "/bin/zsh",
+            arguments: ["-lc", "command -v mysql"],
+            currentDirectory: URL(fileURLWithPath: "/tmp", isDirectory: true),
+            standardInput: nil
+        ).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !found.isEmpty, fileManager.isExecutableFile(atPath: found) {
+            return found
+        }
+        throw DatabaseUpdateError.failed(
+            "The mysql client was not found. Install MariaDB with Homebrew and try again.",
+            databaseReplaced: false
+        )
     }
 
     private static func prepareDirectory() throws {

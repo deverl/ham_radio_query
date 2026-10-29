@@ -30,6 +30,37 @@ struct DatabaseUpdateTests {
         #expect(DatabaseSchema.sqlString("/tmp/a'b\\c") == "'/tmp/a''b\\c'")
     }
 
+    @Test func mysqlImportUsesLoadData() throws {
+        let sql = DatabaseSchema.licenseSQL(
+            database: "fcc",
+            hd: "/tmp/ham-radio-lookup/HD.dat",
+            en: "/tmp/ham-radio-lookup/EN.dat",
+            am: "/tmp/ham-radio-lookup/AM.dat"
+        )
+        #expect(sql.contains("CREATE DATABASE IF NOT EXISTS `fcc`"))
+        #expect(sql.contains("LOAD DATA LOCAL INFILE '/tmp/ham-radio-lookup/HD.dat'"))
+        #expect(sql.contains("FIELDS TERMINATED BY '|'"))
+        #expect(!sql.contains("W7DNS"))
+        #expect(throws: DatabaseUpdateError.self) {
+            try DatabaseSchema.validatedName("fcc; DROP TABLE hd")
+        }
+    }
+
+    @Test func clientFileIsOwnerReadableOnly() throws {
+        let url = URL(fileURLWithPath: "/tmp/ham-radio-query-cnf-test.cnf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var settings = ConnectionSettings.standard
+        settings.password = "a\"b\\c"
+        try DatabaseUpdater.writeClientFile(settings: settings, to: url)
+        let mode = try #require(
+            FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
+        )
+        #expect(mode.uint16Value == 0o600)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        #expect(text.contains("password=\"a\\\"b\\\\c\""))
+        #expect(text.contains("local-infile=1"))
+    }
+
     @Test func columnCountsMatchTheFCCFiles() {
         #expect(DatabaseSchema.hdColumns.count == 59)
         #expect(DatabaseSchema.enColumns.count == 30)

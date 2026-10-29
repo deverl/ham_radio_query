@@ -55,8 +55,8 @@ struct SearchPanel: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(model.isSearching || model.isUpdatingDatabase || model.freshness.isMissing)
-                .help(model.freshness.isMissing ? "Create the license database before searching." : "Search the license database")
+                .disabled(model.isSearching || model.isUpdatingDatabase || model.searchUnavailable)
+                .help(model.searchUnavailable ? "Create the license database before searching." : "Search the license database")
             }
 
             if optionsExpanded {

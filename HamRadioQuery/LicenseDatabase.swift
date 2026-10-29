@@ -1,14 +1,39 @@
 import Foundation
 
-/// Opens the local SQLite license file and runs one search.
+/// Runs one search against the selected MySQL server or the local SQLite file.
 actor LicenseDatabase {
     private let url: URL
+    private var engine: DatabaseEngine
+    private var settings: ConnectionSettings
 
-    init(url: URL = LicenseStore.databaseURL) {
+    /// SQLite-only database used by tests.
+    init(url: URL) {
         self.url = url
+        self.engine = .sqlite
+        self.settings = .standard
+    }
+
+    init(engine: DatabaseEngine, settings: ConnectionSettings) {
+        self.url = LicenseStore.databaseURL
+        self.engine = engine
+        self.settings = settings.normalized()
+    }
+
+    func use(engine: DatabaseEngine, settings: ConnectionSettings) {
+        self.engine = engine
+        self.settings = settings.normalized()
     }
 
     func search(_ query: LicenseQuery) async throws -> [LicenseRecord] {
+        switch engine {
+        case .sqlite:
+            try searchSQLite(query)
+        case .mysql:
+            try await MySQLLicenseDatabase.search(query, settings: settings)
+        }
+    }
+
+    private func searchSQLite(_ query: LicenseQuery) throws -> [LicenseRecord] {
         guard let statement = LicenseSQL.statement(for: query) else { return [] }
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw DatabaseError.message("The license database has not been created.")

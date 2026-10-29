@@ -102,16 +102,16 @@ enum LicenseSQL {
         return SQLStatement(sql: sql, parameters: parameters)
     }
 
-    /// SQLite needs an explicit escape character. The clause is `ESCAPE '\'`.
-    private static let sqlLikeEscape = " ESCAPE " + "'" + "\\" + "'"
+    /// `!` is the LIKE escape in both SQLite and MariaDB. A backslash would end the MariaDB string early.
+    private static let sqlLikeEscape = " ESCAPE '!'"
 
     /// Prefix match with `%` and `_` treated as ordinary characters.
     static func likePrefix(_ value: String) -> String {
         var escaped = ""
         escaped.reserveCapacity(value.count + 1)
         for character in value {
-            if character == "\\" || character == "%" || character == "_" {
-                escaped.append("\\")
+            if character == "!" || character == "%" || character == "_" {
+                escaped.append("!")
             }
             escaped.append(character)
         }

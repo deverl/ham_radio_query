@@ -143,7 +143,7 @@ struct ContentView: View {
                 description: Text("Enter a call sign, name, city, or state.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if model.freshness.isMissing && model.records.isEmpty {
+        } else if model.searchUnavailable && model.records.isEmpty {
             ContentUnavailableView {
                 Label("License Database Needed", systemImage: "externaldrive.badge.plus")
             } description: {
