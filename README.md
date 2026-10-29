@@ -25,16 +25,33 @@ Operator class and license status are stored as the FCC's single-letter codes an
 - macOS 15 or later
 - An internet connection the first time you create the database, and again whenever you update it
 - Xcode, if you are building the app yourself
+- MySQL or MariaDB, only if you choose MySQL instead of the built-in SQLite file
 
 The license file is about 190 MB. Building the database also downloads the RadioID user list and can take several minutes.
 
-## Choose a database
+## Choose MySQL or SQLite
 
-Open **Settings**, or click **Database** in the toolbar. The **Database** choice is a pair of radio buttons.
+Search uses one database at a time. Open **Settings** (Ham Radio Lookup > Settings) or click **Database** in the toolbar. At the top of that window, **Database** is a pair of radio buttons: **SQLite** and **MySQL**. The choice is saved, and the next search uses it.
 
-**SQLite** is the default. It uses a file on this Mac, and the settings window shows that file's path and when it was last built. No MySQL server is required.
+**SQLite** is the default. The license data lives in a file on this Mac, so no database server is required. The settings window shows the file path and the last time it was built. **Create Database…** or **Update Database…** downloads the FCC and RadioID files and builds that file. Search stays disabled until the file exists.
 
-**MySQL** shows the host, port, database name, username, and password. **Test Connection** checks those values without saving them. **Save** stores the host, port, database, and username, and stores the password in the Keychain. **Update Database…** rebuilds the license tables on that server. The usual local values are host `127.0.0.1`, port `3306`, database `fcc`, and user `fccuser`.
+**MySQL** reads and updates a MySQL or MariaDB server. Choosing it shows the connection fields:
+
+| Field | Local default |
+| --- | --- |
+| Host | `127.0.0.1` |
+| Port | `3306` |
+| Database | `fcc` |
+| Username | `fccuser` |
+| Password | `fccuser` |
+
+**Use Local Defaults** fills in those values. They match the local database used by the FCC web app in the sibling `fcc` project. Change them if your server is elsewhere or uses a different account.
+
+**Test Connection** tries the host, port, database, username, and password currently on screen. It does not save them. A successful test says which database it reached. A failure names the connection problem, such as a server that is not running, a rejected password, or a database name that does not exist.
+
+**Save** stores the host, port, database name, and username in the app's preferences. The password is stored in the Keychain. Until you save, a successful test applies only to that test. Searches use the saved connection.
+
+**Update Database…** downloads the FCC and RadioID files and rebuilds the license tables in the saved MySQL database. The database is created if that account is allowed to create it. This step needs the `mysql` command-line client, such as the one installed with Homebrew MariaDB. Search itself does not need that client. If the server is not running, the search says it could not connect.
 
 ## Create or update the database
 
@@ -42,7 +59,7 @@ The app does not include license data.
 
 With **SQLite** selected, the first launch says the database has not been created, and **Search** stays disabled until one exists. Create it from the main window, from **Tools > Create License Database…**, or from **Create Database…** in Settings. The finished file is installed only after the import succeeds, so a failed update leaves the previous file in place. If the file is more than 8 days old, the app asks you to update it, and search still works.
 
-With **MySQL** selected, use **Update Database…** in Settings or **Tools > Update License Database…**. That rebuilds the license tables in the MySQL database named in Settings. Search stays available. If the server is not running, the search explains that it could not connect.
+With **MySQL** selected, save the connection first, then use **Update Database…** in Settings or **Tools > Update License Database…**. That rebuilds the license tables in the MySQL database named in Settings. Search stays available while you do this.
 
 Either choice downloads the same files:
 
