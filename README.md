@@ -2,6 +2,8 @@
 
 Ham Radio Lookup is a macOS app for searching United States amateur radio licenses. It reads either a MySQL database or a SQLite file built from the FCC Universal Licensing System amateur file and the RadioID DMR user list. Searches run on your Mac. The app does not send a query to a server.
 
+A cross-platform Electron app that performs the same operations is at [github.com/deverl/ham_radio_lookup](https://github.com/deverl/ham_radio_lookup).
+
 The window is titled **Ham Radio Lookup**. The Xcode project and the app bundle are named `HamRadioQuery` (`us.ds6.HamRadioQuery`).
 
 ## What you can look up
