@@ -114,3 +114,24 @@ struct MissingDatabaseTests {
         #expect(model.maintenanceMenuTitle == "Create License Database…")
     }
 }
+
+@MainActor
+struct ResultSummaryTests {
+    @Test func statusLineIncludesQueryTime() {
+        let model = LookupModel()
+        model.suppressDatabaseNotice = true
+        model.records = [LicenseRecord.samples[0]]
+        model.queryDuration = 0.048
+        #expect(model.resultSummary == "Found 1 matching record in 48 ms")
+
+        model.records = LicenseRecord.samples
+        model.queryDuration = 1.24
+        #expect(model.resultSummary == "Found 3 matching records in 1.2 seconds")
+
+        model.filter = "jordan"
+        #expect(model.resultSummary == "Showing 1 of 3 records in 1.2 seconds")
+        #expect(QueryTiming.label(seconds: 1) == "1 second")
+        #expect(QueryTiming.label(seconds: 10) == "10 seconds")
+        #expect(QueryTiming.label(seconds: 0.0004) == "< 1 ms")
+    }
+}

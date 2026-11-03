@@ -21,6 +21,7 @@ final class LookupModel {
     var hasSearched = false
     var hadCriteria = false
     var errorMessage: String?
+    var queryDuration: TimeInterval?
     var isExporting = false
     var engine: DatabaseEngine
     var connectionSettings: ConnectionSettings
@@ -68,20 +69,22 @@ final class LookupModel {
     var resultSummary: String? {
         guard !records.isEmpty else { return nil }
         let total = records.count
+        let timing = queryDuration.map { " in \(QueryTiming.label(seconds: $0))" } ?? ""
         if !filter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let noun = total == 1 ? "record" : "records"
-            return "Showing \(filteredRecords.count) of \(total) \(noun)"
+            return "Showing \(filteredRecords.count) of \(total) \(noun)\(timing)"
         }
         if total == 1 {
-            return "Found 1 matching record"
+            return "Found 1 matching record\(timing)"
         }
-        return "Found \(total) matching records"
+        return "Found \(total) matching records\(timing)"
     }
 
     func search() {
         guard !isUpdatingDatabase else { return }
         if searchUnavailable {
             records = []
+            queryDuration = nil
             hasSearched = false
             hadCriteria = false
             isSearching = false
@@ -99,6 +102,7 @@ final class LookupModel {
 
         guard query.hasCriteria else {
             records = []
+            queryDuration = nil
             hasSearched = true
             hadCriteria = false
             isSearching = false
@@ -109,11 +113,13 @@ final class LookupModel {
         isSearching = true
         hasSearched = true
         let database = database
+        let started = ContinuousClock.now
         Task {
             do {
                 let found = try await database.search(query)
                 guard token == generation else { return }
                 records = found
+                queryDuration = QueryTiming.seconds(from: started.duration(to: .now))
                 errorMessage = nil
             } catch {
                 guard token == generation else { return }
@@ -137,6 +143,7 @@ final class LookupModel {
         applyTitleCase = true
         filter = ""
         records = []
+        queryDuration = nil
         selection = []
         sortOrder = []
         hasSearched = false
@@ -314,6 +321,7 @@ final class LookupModel {
                     self.updateCanCancel = snapshot.canCancel
                 }
                 records = []
+                queryDuration = nil
                 selection = []
                 filter = ""
                 hasSearched = false
@@ -327,6 +335,7 @@ final class LookupModel {
             } catch let error as DatabaseUpdateError {
                 if error.replacedLicenseTables {
                     records = []
+                    queryDuration = nil
                     selection = []
                     filter = ""
                     hasSearched = false
@@ -372,9 +381,31 @@ final class LookupModel {
         model.city = "Emmett"
         model.state = "ID"
         model.records = LicenseRecord.samples
+        model.queryDuration = 0.18
         model.hasSearched = true
         model.hadCriteria = true
         return model
+    }
+}
+
+enum QueryTiming {
+    static func seconds(from duration: Duration) -> TimeInterval {
+        let components = duration.components
+        return TimeInterval(components.seconds) + TimeInterval(components.attoseconds) / 1e18
+    }
+
+    static func label(seconds: TimeInterval) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "" }
+        let milliseconds = Int((seconds * 1000).rounded())
+        if milliseconds < 1 { return "< 1 ms" }
+        if milliseconds < 1000 { return "\(milliseconds) ms" }
+        let scaled = Int((seconds * 10).rounded())
+        let whole = scaled / 10
+        let fraction = abs(scaled % 10)
+        if fraction == 0 {
+            return whole == 1 ? "1 second" : "\(whole) seconds"
+        }
+        return "\(whole).\(fraction) seconds"
     }
 }
 
