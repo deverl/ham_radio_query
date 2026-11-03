@@ -52,8 +52,8 @@ enum DatabaseUpdater {
             switch engine {
             case .sqlite:
                 try await perform(session: session, progress: progress)
-            case .mysql:
-                try await performMySQL(settings: settings, session: session, progress: progress)
+            case .mysql, .postgres:
+                try await performServer(engine: engine, settings: settings, session: session, progress: progress)
             }
         }.value
     }
@@ -313,7 +313,103 @@ enum DatabaseUpdater {
         return quoted
     }
 
-    private static func performMySQL(
+    static func pgPassField(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: ":", with: "\\:")
+    }
+
+    static func pgPass(settings: ConnectionSettings, databases: [String]) -> String {
+        let settings = settings.normalized()
+        let lines = databases.map { database in
+            [settings.host, String(settings.port), database, settings.username, settings.password]
+                .map(pgPassField)
+                .joined(separator: ":")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    @discardableResult
+    static func runPostgres(
+        sql: String,
+        settings: ConnectionSettings,
+        workingDirectory: URL,
+        database: String? = nil
+    ) throws -> String {
+        let settings = settings.normalized()
+        guard !settings.host.isEmpty,
+              !settings.username.isEmpty,
+              (1...65535).contains(settings.port)
+        else {
+            throw DatabaseUpdateError.failed("The database connection settings are incomplete.", databaseReplaced: false)
+        }
+        guard !settings.host.contains(where: \.isNewline),
+              !settings.username.contains(where: \.isNewline),
+              !settings.password.contains(where: \.isNewline)
+        else {
+            throw DatabaseUpdateError.failed("The database connection settings contain a line break.", databaseReplaced: false)
+        }
+        let target = database ?? settings.database
+        let passFile = workingDirectory.appendingPathComponent(".pgpass")
+        let text = pgPass(settings: settings, databases: [target, "postgres"])
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: passFile.path) {
+            try fileManager.removeItem(at: passFile)
+        }
+        guard fileManager.createFile(
+            atPath: passFile.path,
+            contents: Data(text.utf8),
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw DatabaseUpdateError.failed("Could not write the database client settings.", databaseReplaced: false)
+        }
+        defer { try? fileManager.removeItem(at: passFile) }
+        let psql = try psqlExecutable()
+        return try run(
+            executable: psql,
+            arguments: [
+                "--no-psqlrc",
+                "-v", "ON_ERROR_STOP=1",
+                "-h", settings.host,
+                "-p", String(settings.port),
+                "-U", settings.username,
+                "-d", target,
+                "--no-password",
+            ],
+            currentDirectory: workingDirectory,
+            standardInput: sql,
+            environment: [
+                "PGPASSFILE": passFile.path,
+                "PGSSLMODE": "disable",
+            ]
+        ).stdout
+    }
+
+    private static func ensurePostgresDatabase(_ settings: ConnectionSettings) throws {
+        let database = try DatabaseSchema.validatedName(settings.database)
+        do {
+            _ = try runPostgres(
+                sql: "SELECT 1;",
+                settings: settings,
+                workingDirectory: directory,
+                database: database
+            )
+            return
+        } catch let error as DatabaseUpdateError {
+            guard error.localizedDescription.localizedCaseInsensitiveContains("does not exist") else {
+                throw error
+            }
+        }
+        _ = try runPostgres(
+            sql: "CREATE DATABASE \(DatabaseSchema.quotedPostgresIdentifier(database));",
+            settings: settings,
+            workingDirectory: directory,
+            database: "postgres"
+        )
+    }
+
+    private static func performServer(
+        engine: DatabaseEngine,
         settings: ConnectionSettings,
         session: DatabaseUpdateSession,
         progress: @escaping @MainActor (DatabaseUpdateSnapshot) -> Void
@@ -363,6 +459,9 @@ enum DatabaseUpdater {
             let en = try locate("EN.dat")
             let am = try locate("AM.dat")
             let database = try DatabaseSchema.validatedName(settings.database)
+            if engine == .postgres {
+                try ensurePostgresDatabase(settings)
+            }
 
             relay.phase(DatabaseUpdateSnapshot(
                 status: "Rebuilding license tables…",
@@ -370,11 +469,14 @@ enum DatabaseUpdater {
                 detail: "This replaces the current license records and can take a few minutes.",
                 canCancel: false
             ))
-            try runMySQL(
-                sql: DatabaseSchema.licenseSQL(database: database, hd: hd.path, en: en.path, am: am.path),
-                settings: settings,
-                workingDirectory: directory
-            )
+            let licenseSQL = engine == .postgres
+                ? DatabaseSchema.postgresLicenseSQL(hd: hd.path, en: en.path, am: am.path)
+                : DatabaseSchema.licenseSQL(database: database, hd: hd.path, en: en.path, am: am.path)
+            if engine == .postgres {
+                try runPostgres(sql: licenseSQL, settings: settings, workingDirectory: directory)
+            } else {
+                try runMySQL(sql: licenseSQL, settings: settings, workingDirectory: directory)
+            }
             databaseReplaced = true
             try checkCancelled(session, databaseReplaced: true)
 
@@ -405,11 +507,14 @@ enum DatabaseUpdater {
                 detail: "This replaces the current DMR records.",
                 canCancel: false
             ))
-            try runMySQL(
-                sql: DatabaseSchema.dmrSQL(database: database, csv: csvURL.path),
-                settings: settings,
-                workingDirectory: directory
-            )
+            let dmrSQL = engine == .postgres
+                ? DatabaseSchema.postgresDmrSQL(csv: csvURL.path)
+                : DatabaseSchema.dmrSQL(database: database, csv: csvURL.path)
+            if engine == .postgres {
+                try runPostgres(sql: dmrSQL, settings: settings, workingDirectory: directory)
+            } else {
+                try runMySQL(sql: dmrSQL, settings: settings, workingDirectory: directory)
+            }
         } catch {
             throw map(error, databaseReplaced: databaseReplaced)
         }
@@ -437,6 +542,39 @@ enum DatabaseUpdater {
         }
         throw DatabaseUpdateError.failed(
             "The mysql client was not found. Install MariaDB with Homebrew and try again.",
+            databaseReplaced: false
+        )
+    }
+
+    private static func psqlExecutable() throws -> String {
+        let candidates = [
+            "/opt/homebrew/bin/psql",
+            "/usr/local/bin/psql",
+            "/opt/homebrew/opt/libpq/bin/psql",
+            "/usr/bin/psql",
+        ]
+        let fileManager = FileManager.default
+        if let path = candidates.first(where: { fileManager.isExecutableFile(atPath: $0) }) {
+            return path
+        }
+        let shells = ["/bin/zsh", "/bin/sh"]
+        for shell in shells where fileManager.isExecutableFile(atPath: shell) {
+            let found = (try? run(
+                executable: shell,
+                arguments: ["-lc", "command -v psql"],
+                currentDirectory: URL(fileURLWithPath: "/tmp", isDirectory: true),
+                standardInput: nil
+            ).stdout)?
+                .split(whereSeparator: \.isNewline)
+                .last
+                .map(String.init)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !found.isEmpty, fileManager.isExecutableFile(atPath: found) {
+                return found
+            }
+        }
+        throw DatabaseUpdateError.failed(
+            "The psql client was not found. Install the PostgreSQL client and try again.",
             databaseReplaced: false
         )
     }
@@ -518,7 +656,8 @@ enum DatabaseUpdater {
         executable: String,
         arguments: [String],
         currentDirectory: URL,
-        standardInput: String?
+        standardInput: String?,
+        environment: [String: String]? = nil
     ) throws -> CommandOutput {
         let token = UUID().uuidString
         let stdoutURL = currentDirectory.appendingPathComponent(".command-stdout-\(token)")
@@ -542,6 +681,13 @@ enum DatabaseUpdater {
         process.standardOutput = stdout
         process.standardError = stderr
         process.qualityOfService = .userInitiated
+        if let environment {
+            var merged = ProcessInfo.processInfo.environment
+            for (key, value) in environment {
+                merged[key] = value
+            }
+            process.environment = merged
+        }
 
         if let standardInput {
             let stdin = Pipe()

@@ -46,6 +46,28 @@ struct DatabaseUpdateTests {
         }
     }
 
+    @Test func postgresImportCopiesPipeFiles() {
+        let sql = DatabaseSchema.postgresLicenseSQL(
+            hd: "/tmp/a'b.dat",
+            en: "/tmp/EN.dat",
+            am: "/tmp/AM.dat"
+        )
+        #expect(sql.contains("\\copy hd FROM '/tmp/a''b.dat' WITH (FORMAT csv, DELIMITER '|', QUOTE E'\\x01', ESCAPE E'\\x01')"))
+        #expect(!sql.contains("line_end"))
+        #expect(sql.contains("CREATE INDEX en_call_sign_index"))
+        #expect(!sql.contains("dmr_call_sign_index"))
+        let dmr = DatabaseSchema.postgresDmrSQL(csv: "/tmp/user.csv")
+        #expect(dmr.contains("\\copy dmr FROM '/tmp/user.csv' WITH (FORMAT csv, HEADER true)"))
+    }
+
+    @Test func pgPassEscapesColons() {
+        var settings = ConnectionSettings.postgres
+        settings.username = "fc:c"
+        settings.password = "a\\b"
+        let text = DatabaseUpdater.pgPass(settings: settings, databases: ["fcc"])
+        #expect(text == "127.0.0.1:5432:fcc:fc\\:c:a\\\\b\n")
+    }
+
     @Test func clientFileIsOwnerReadableOnly() throws {
         let url = URL(fileURLWithPath: "/tmp/ham-radio-query-cnf-test.cnf")
         defer { try? FileManager.default.removeItem(at: url) }

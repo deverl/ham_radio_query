@@ -32,7 +32,7 @@ struct SQLStatement: Equatable, Sendable {
 /// Call sign and state are exact. First name, last name, and city are prefixes.
 /// An empty license-status or operator-class set does not filter that column.
 enum LicenseSQL {
-    static func statement(for query: LicenseQuery) -> SQLStatement? {
+    static func statement(for query: LicenseQuery, engine: DatabaseEngine = .sqlite) -> SQLStatement? {
         let callSign = LicenseQuery.trimmed(query.callSign).uppercased()
         let firstName = LicenseQuery.trimmed(query.firstName)
         let lastName = LicenseQuery.trimmed(query.lastName)
@@ -43,39 +43,48 @@ enum LicenseSQL {
             return nil
         }
 
+        let postgres = engine == .postgres
+        let like = postgres ? "ILIKE" : "LIKE"
+        let nullFunction = postgres ? "COALESCE" : "IFNULL"
+        var index = 0
+        func mark() -> String {
+            index += 1
+            return postgres ? "$\(index)" : "?"
+        }
+
         var clauses: [String] = []
         var parameters: [String] = []
 
         if !callSign.isEmpty {
-            clauses.append("en.call_sign = ?")
+            clauses.append("en.call_sign = \(mark())")
             parameters.append(callSign)
         }
         if !firstName.isEmpty {
-            clauses.append("en.first_name LIKE ?" + sqlLikeEscape)
+            clauses.append("en.first_name \(like) \(mark())" + sqlLikeEscape)
             parameters.append(likePrefix(firstName))
         }
         if !lastName.isEmpty {
-            clauses.append("en.last_name LIKE ?" + sqlLikeEscape)
+            clauses.append("en.last_name \(like) \(mark())" + sqlLikeEscape)
             parameters.append(likePrefix(lastName))
         }
         if !city.isEmpty {
-            clauses.append("en.city LIKE ?" + sqlLikeEscape)
+            clauses.append("en.city \(like) \(mark())" + sqlLikeEscape)
             parameters.append(likePrefix(city))
         }
         if !state.isEmpty {
-            clauses.append("en.state = ?")
+            clauses.append("en.state = \(mark())")
             parameters.append(state)
         }
 
         let statuses = LicenseStatus.allCases.map(\.rawValue).filter { query.licenseStatuses.contains($0) }
         if !statuses.isEmpty {
-            clauses.append("hd.license_status IN (\(placeholders(statuses.count)))")
+            clauses.append("hd.license_status IN (\(placeholders(statuses.count, mark: mark)))")
             parameters.append(contentsOf: statuses)
         }
 
         let classes = OperatorClass.allCases.map(\.rawValue).filter { query.operatorClasses.contains($0) }
         if !classes.isEmpty {
-            clauses.append("am.operator_class IN (\(placeholders(classes.count)))")
+            clauses.append("am.operator_class IN (\(placeholders(classes.count, mark: mark)))")
             parameters.append(contentsOf: classes)
         }
 
@@ -91,7 +100,7 @@ enum LicenseSQL {
                hd.license_status AS license_status,
                en.frn AS frn,
                am.region_code AS region_code,
-               IFNULL(dmr.radio_id, '') AS dmr_id
+               \(nullFunction)(dmr.radio_id, '') AS dmr_id
         FROM en
         JOIN hd ON hd.sys_id = en.sys_id
         JOIN am ON am.sys_id = en.sys_id
@@ -119,7 +128,7 @@ enum LicenseSQL {
         return escaped
     }
 
-    private static func placeholders(_ count: Int) -> String {
-        Array(repeating: "?", count: count).joined(separator: ", ")
+    private static func placeholders(_ count: Int, mark: () -> String) -> String {
+        (0..<count).map { _ in mark() }.joined(separator: ", ")
     }
 }

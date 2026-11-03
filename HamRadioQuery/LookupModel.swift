@@ -45,7 +45,7 @@ final class LookupModel {
 
     init(database: LicenseDatabase? = nil) {
         let engine = DatabaseEngine.load()
-        let settings = ConnectionSettings.load()
+        let settings = ConnectionSettings.load(for: engine == .postgres ? .postgres : .mysql)
         self.engine = engine
         self.connectionSettings = settings
         self.database = database ?? LicenseDatabase(engine: engine, settings: settings)
@@ -193,8 +193,9 @@ final class LookupModel {
     }
 
     var maintenanceConfirmMessage: String {
-        if engine == .mysql {
-            return "This downloads the latest FCC amateur license file (about 190 MB) and the RadioID user list, then rebuilds the MySQL database \(connectionSettings.database). The current license tables are replaced. Downloaded files are left in /tmp/ham-radio-lookup."
+        if engine == .mysql || engine == .postgres {
+            let product = engine == .postgres ? "PostgreSQL" : "MySQL"
+            return "This downloads the latest FCC amateur license file (about 190 MB) and the RadioID user list, then rebuilds the \(product) database \(connectionSettings.database). The current license tables are replaced. Downloaded files are left in /tmp/ham-radio-lookup."
         }
         if freshness.isMissing {
             return "The license database has not been created. This downloads the FCC amateur license file (about 190 MB) and the RadioID user list, then builds a database in \(LicenseStore.folderName). Downloaded files are left in /tmp/ham-radio-lookup."
@@ -237,6 +238,9 @@ final class LookupModel {
     func applyEngine(_ engine: DatabaseEngine) {
         DatabaseEngine.save(engine)
         databaseNotice = nil
+        if engine != .sqlite {
+            connectionSettings = ConnectionSettings.load(for: engine)
+        }
         let database = database
         let settings = connectionSettings
         Task { await database.use(engine: engine, settings: settings) }
@@ -258,7 +262,8 @@ final class LookupModel {
     func updateConnection(_ settings: ConnectionSettings) -> String? {
         let normalized = settings.normalized()
         connectionSettings = normalized
-        let warning = ConnectionSettings.save(normalized)
+        let slot: DatabaseEngine = engine == .postgres ? .postgres : .mysql
+        let warning = ConnectionSettings.save(normalized, for: slot)
         let database = database
         let engine = engine
         Task { await database.use(engine: engine, settings: normalized) }

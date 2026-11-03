@@ -17,15 +17,18 @@ struct DatabaseStatusView: View {
             Picker("Database", selection: $model.engine) {
                 Text("SQLite").tag(DatabaseEngine.sqlite)
                 Text("MySQL").tag(DatabaseEngine.mysql)
+                Text("PostgreSQL").tag(DatabaseEngine.postgres)
             }
             .pickerStyle(.radioGroup)
             .horizontalRadioGroupLayout()
             .onChange(of: model.engine) { _, newValue in
                 model.applyEngine(newValue)
+                draft = model.connectionSettings
+                status = nil
                 fitSettingsWindow()
             }
 
-            if model.engine == .mysql {
+            if model.engine == .mysql || model.engine == .postgres {
                 Section("Server") {
                     TextField("Host", text: $draft.host)
                     TextField("Port", value: $draft.port, format: .number.grouping(.never))
@@ -38,7 +41,7 @@ struct DatabaseStatusView: View {
                 Section {
                     HStack {
                         Button("Use Local Defaults") {
-                            draft = .standard
+                            draft = model.engine == .postgres ? .postgres : .standard
                             status = "Defaults filled in. Save to keep them."
                         }
                         Spacer()
@@ -69,7 +72,9 @@ struct DatabaseStatusView: View {
                     }
                 }
                 Section {
-                    Text("The FCC web app uses host 127.0.0.1, port 3306, database fcc, and user fccuser.")
+                    Text(model.engine == .postgres
+                        ? "The local PostgreSQL defaults are host 127.0.0.1, port 5432, database fcc, and user fccuser."
+                        : "The FCC web app uses host 127.0.0.1, port 3306, database fcc, and user fccuser.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -127,7 +132,11 @@ struct DatabaseStatusView: View {
         testing = true
         defer { testing = false }
         do {
-            try await MySQLLicenseDatabase.test(draft)
+            if model.engine == .postgres {
+                try await PostgresLicenseDatabase.test(draft)
+            } else {
+                try await MySQLLicenseDatabase.test(draft)
+            }
             let normalized = draft.normalized()
             status = "Connected to \(normalized.database) on \(normalized.host):\(normalized.port)."
         } catch {
@@ -141,7 +150,7 @@ struct DatabaseStatusView: View {
 
     /// The settings window remembers a short frame. Grow it so the MySQL buttons stay on screen.
     private func fitSettingsWindow() {
-        let minimum: CGFloat = model.engine == .mysql ? 680 : 340
+        let minimum: CGFloat = model.engine == .sqlite ? 340 : 680
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(50))
             guard let window = NSApp.windows.first(where: {

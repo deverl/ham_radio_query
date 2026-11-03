@@ -39,6 +39,25 @@ struct QuerySQLTests {
         #expect(statement.parameters == ["WD6BQX", "A", "E", "G"])
     }
 
+    @Test func postgresSearchUsesNumberedPlaceholders() throws {
+        let query = LicenseQuery(
+            callSign: "w7dns",
+            firstName: "Jo_n",
+            lastName: "",
+            city: "",
+            state: "",
+            licenseStatuses: ["A"],
+            operatorClasses: [],
+            applyTitleCase: true
+        )
+        let statement = try #require(LicenseSQL.statement(for: query, engine: .postgres))
+        #expect(statement.sql.contains("en.call_sign = $1"))
+        #expect(statement.sql.contains("en.first_name ILIKE $2 ESCAPE '!'"))
+        #expect(statement.sql.contains("COALESCE(dmr.radio_id, '') AS dmr_id"))
+        #expect(!statement.sql.contains("IFNULL"))
+        #expect(statement.parameters == ["W7DNS", "Jo!_n%", "A"])
+    }
+
     @Test func namesAndCityAreLiteralPrefixes() throws {
         let query = LicenseQuery(
             callSign: "",

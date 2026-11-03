@@ -30,6 +30,8 @@ actor LicenseDatabase {
             try searchSQLite(query)
         case .mysql:
             try await MySQLLicenseDatabase.search(query, settings: settings)
+        case .postgres:
+            try await PostgresLicenseDatabase.search(query, settings: settings)
         }
     }
 

@@ -179,6 +179,54 @@ enum DatabaseSchema {
         """
     }
 
+    static func quotedPostgresIdentifier(_ name: String) -> String {
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+    }
+
+    static func postgresLicenseSQL(hd: String, en: String, am: String) -> String {
+        """
+        DROP TABLE IF EXISTS hd;
+        DROP TABLE IF EXISTS en;
+        DROP TABLE IF EXISTS am;
+
+        \(postgresTable("hd", columns: hdColumns))
+        \(postgresTable("en", columns: enColumns))
+        \(postgresTable("am", columns: amColumns))
+
+        \\copy hd FROM \(sqlString(hd)) WITH (FORMAT csv, DELIMITER '|', QUOTE E'\\x01', ESCAPE E'\\x01')
+        \\copy en FROM \(sqlString(en)) WITH (FORMAT csv, DELIMITER '|', QUOTE E'\\x01', ESCAPE E'\\x01')
+        \\copy am FROM \(sqlString(am)) WITH (FORMAT csv, DELIMITER '|', QUOTE E'\\x01', ESCAPE E'\\x01')
+
+        CREATE INDEX en_call_sign_index ON en (call_sign);
+        CREATE INDEX en_first_name_last_name_index ON en (first_name, last_name);
+        CREATE INDEX en_last_name_index ON en (last_name);
+        CREATE INDEX en_city ON en (city);
+        CREATE INDEX hd_sys_id_index ON hd (sys_id, license_status);
+        CREATE INDEX am_sys_id_index ON am (sys_id, operator_class, region_code);
+        """
+    }
+
+    static func postgresDmrSQL(csv: String) -> String {
+        """
+        DROP TABLE IF EXISTS dmr;
+
+        \(postgresTable("dmr", columns: dmrColumns))
+
+        \\copy dmr FROM \(sqlString(csv)) WITH (FORMAT csv, HEADER true)
+
+        CREATE INDEX dmr_call_sign_index ON dmr (call_sign, radio_id);
+        """
+    }
+
+    private static func postgresTable(_ name: String, columns: [String]) -> String {
+        let definitions = columns.map { "\($0) TEXT" }.joined(separator: ",\n    ")
+        return """
+        CREATE TABLE \(name) (
+            \(definitions)
+        );
+        """
+    }
+
     private static let mysqlLicenseTables = """
     CREATE TABLE hd (
         record_type VARCHAR(10),
