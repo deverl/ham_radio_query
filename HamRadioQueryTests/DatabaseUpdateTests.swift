@@ -40,6 +40,7 @@ struct DatabaseUpdateTests {
         #expect(sql.contains("CREATE DATABASE IF NOT EXISTS `fcc`"))
         #expect(sql.contains("LOAD DATA LOCAL INFILE '/tmp/ham-radio-lookup/HD.dat'"))
         #expect(sql.contains("FIELDS TERMINATED BY '|'"))
+        #expect(sql.contains("CREATE INDEX en_state_name_index ON en (state, last_name, first_name)"))
         #expect(!sql.contains("W7DNS"))
         #expect(throws: DatabaseUpdateError.self) {
             try DatabaseSchema.validatedName("fcc; DROP TABLE hd")
@@ -55,6 +56,7 @@ struct DatabaseUpdateTests {
         #expect(sql.contains("\\copy hd FROM '/tmp/a''b.dat' WITH (FORMAT csv, DELIMITER '|', QUOTE E'\\x01', ESCAPE E'\\x01')"))
         #expect(!sql.contains("line_end"))
         #expect(sql.contains("CREATE INDEX en_call_sign_index"))
+        #expect(sql.contains("CREATE INDEX en_state_name_index ON en (state, last_name, first_name)"))
         #expect(!sql.contains("dmr_call_sign_index"))
         let dmr = DatabaseSchema.postgresDmrSQL(csv: "/tmp/user.csv")
         #expect(dmr.contains("\\copy dmr FROM '/tmp/user.csv' WITH (FORMAT csv, HEADER true)"))

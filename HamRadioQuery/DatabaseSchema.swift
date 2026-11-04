@@ -51,6 +51,7 @@ enum DatabaseSchema {
     CREATE INDEX en_first_name_last_name_index ON en (first_name, last_name);
     CREATE INDEX en_last_name_index ON en (last_name);
     CREATE INDEX en_city ON en (city);
+    CREATE INDEX en_state_name_index ON en (state, last_name, first_name);
     CREATE INDEX hd_sys_id_index ON hd (sys_id, license_status);
     CREATE INDEX am_sys_id_index ON am (sys_id, operator_class, region_code);
     CREATE INDEX dmr_call_sign_index ON dmr (call_sign, radio_id);
@@ -201,6 +202,7 @@ enum DatabaseSchema {
         CREATE INDEX en_first_name_last_name_index ON en (first_name, last_name);
         CREATE INDEX en_last_name_index ON en (last_name);
         CREATE INDEX en_city ON en (city);
+        CREATE INDEX en_state_name_index ON en (state, last_name, first_name);
         CREATE INDEX hd_sys_id_index ON hd (sys_id, license_status);
         CREATE INDEX am_sys_id_index ON am (sys_id, operator_class, region_code);
         """
@@ -348,6 +350,7 @@ enum DatabaseSchema {
     CREATE INDEX en_first_name_last_name_index ON en (first_name, last_name);
     CREATE INDEX en_last_name_index ON en (last_name);
     CREATE INDEX en_city ON en (city);
+    CREATE INDEX en_state_name_index ON en (state, last_name, first_name);
     CREATE INDEX hd_sys_id_index ON hd (sys_id, license_status);
     CREATE INDEX am_sys_id_index ON am (sys_id, operator_class, region_code);
     """
