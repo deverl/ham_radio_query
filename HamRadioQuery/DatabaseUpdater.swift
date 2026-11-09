@@ -46,14 +46,21 @@ enum DatabaseUpdater {
         engine: DatabaseEngine,
         settings: ConnectionSettings,
         session: DatabaseUpdateSession,
+        stateIndex: Bool = false,
         progress: @escaping @MainActor (DatabaseUpdateSnapshot) -> Void
     ) async throws {
         try await Task.detached(priority: .userInitiated) {
             switch engine {
             case .sqlite:
-                try await perform(session: session, progress: progress)
+                try await perform(session: session, stateIndex: stateIndex, progress: progress)
             case .mysql, .postgres:
-                try await performServer(engine: engine, settings: settings, session: session, progress: progress)
+                try await performServer(
+                    engine: engine,
+                    settings: settings,
+                    session: session,
+                    stateIndex: stateIndex,
+                    progress: progress
+                )
             }
         }.value
     }
@@ -94,6 +101,7 @@ enum DatabaseUpdater {
 
     private static func perform(
         session: DatabaseUpdateSession,
+        stateIndex: Bool,
         progress: @escaping @MainActor (DatabaseUpdateSnapshot) -> Void
     ) async throws {
         let relay = ProgressRelay(progress: progress)
@@ -191,11 +199,13 @@ enum DatabaseUpdater {
             relay.phase(DatabaseUpdateSnapshot(
                 status: "Indexing license records…",
                 fraction: nil,
-                detail: "This can take a few minutes.",
+                detail: stateIndex
+                    ? "The state-only search index adds significant time."
+                    : "This can take a few minutes.",
                 canCancel: false
             ))
             let count = try sqlite(
-                DatabaseSchema.finishScript(importedAt: LicenseStore.timestamp(Date())),
+                DatabaseSchema.finishScript(importedAt: LicenseStore.timestamp(Date()), stateIndex: stateIndex),
                 database: staging,
                 workingDirectory: directory
             )
@@ -412,6 +422,7 @@ enum DatabaseUpdater {
         engine: DatabaseEngine,
         settings: ConnectionSettings,
         session: DatabaseUpdateSession,
+        stateIndex: Bool,
         progress: @escaping @MainActor (DatabaseUpdateSnapshot) -> Void
     ) async throws {
         let relay = ProgressRelay(progress: progress)
@@ -466,12 +477,14 @@ enum DatabaseUpdater {
             relay.phase(DatabaseUpdateSnapshot(
                 status: "Rebuilding license tables…",
                 fraction: nil,
-                detail: "This replaces the current license records and can take a few minutes.",
+                detail: stateIndex
+                    ? "This replaces the current license records. The state-only search index adds significant time."
+                    : "This replaces the current license records and can take a few minutes.",
                 canCancel: false
             ))
             let licenseSQL = engine == .postgres
-                ? DatabaseSchema.postgresLicenseSQL(hd: hd.path, en: en.path, am: am.path)
-                : DatabaseSchema.licenseSQL(database: database, hd: hd.path, en: en.path, am: am.path)
+                ? DatabaseSchema.postgresLicenseSQL(hd: hd.path, en: en.path, am: am.path, stateIndex: stateIndex)
+                : DatabaseSchema.licenseSQL(database: database, hd: hd.path, en: en.path, am: am.path, stateIndex: stateIndex)
             if engine == .postgres {
                 try runPostgres(sql: licenseSQL, settings: settings, workingDirectory: directory)
             } else {

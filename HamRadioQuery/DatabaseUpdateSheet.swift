@@ -57,3 +57,61 @@ struct DatabaseUpdateSheet: View {
         .interactiveDismissDisabled(model.isUpdatingDatabase)
     }
 }
+
+struct DatabaseConfirmSheet: View {
+    @Binding var buildStateIndex: Bool
+    let onConfirm: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var shownTitle: String
+    @State private var shownMessage: String
+    @State private var shownConfirm: String
+    @State private var shownCancel: String
+
+    init(
+        title: String,
+        message: String,
+        confirmTitle: String,
+        cancelTitle: String,
+        buildStateIndex: Binding<Bool>,
+        onConfirm: @escaping () -> Void
+    ) {
+        self._buildStateIndex = buildStateIndex
+        self.onConfirm = onConfirm
+        _shownTitle = State(initialValue: title)
+        _shownMessage = State(initialValue: message)
+        _shownConfirm = State(initialValue: confirmTitle)
+        _shownCancel = State(initialValue: cancelTitle)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(shownTitle)
+                .font(.title2.weight(.semibold))
+            Text(shownMessage)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle(isOn: $buildStateIndex) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Build an index for state-only searches")
+                    Text("This adds significant time to database creation, and speeds up state-only searches.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.checkbox)
+            HStack {
+                Spacer()
+                Button(shownCancel) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                Button(shownConfirm) {
+                    onConfirm()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 480, alignment: .leading)
+    }
+}

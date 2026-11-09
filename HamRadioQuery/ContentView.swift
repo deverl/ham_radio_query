@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Bindable var model: LookupModel
+    @State private var buildStateIndex = false
     @FocusState private var filterFocused: Bool
     @Environment(\.openSettings) private var openSettings
 
@@ -53,27 +54,24 @@ struct ContentView: View {
         .task {
             model.offerDatabaseMaintenanceIfNeeded()
         }
-        .alert(model.databaseNoticeTitle, isPresented: databaseNoticePresented) {
-            Button(model.databaseNoticeButton) {
-                Task { @MainActor in
-                    await Task.yield()
-                    model.startDatabaseUpdate()
+        .sheet(isPresented: databasePromptPresented) {
+            DatabaseConfirmSheet(
+                title: model.confirmDatabaseUpdate ? model.maintenanceConfirmTitle : model.databaseNoticeTitle,
+                message: model.confirmDatabaseUpdate ? model.maintenanceConfirmMessage : model.databaseNoticeMessage,
+                confirmTitle: model.confirmDatabaseUpdate ? model.maintenanceConfirmButton : model.databaseNoticeButton,
+                cancelTitle: model.confirmDatabaseUpdate ? "Cancel" : (model.freshness.isMissing ? "Not Now" : "Later"),
+                buildStateIndex: $buildStateIndex,
+                onConfirm: {
+                    let stateIndex = buildStateIndex
+                    model.confirmDatabaseUpdate = false
+                    model.databaseNotice = nil
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(300))
+                        model.startDatabaseUpdate(stateIndex: stateIndex)
+                    }
                 }
-            }
-            Button(model.freshness.isMissing ? "Not Now" : "Later", role: .cancel) {}
-        } message: {
-            Text(model.databaseNoticeMessage)
-        }
-        .alert(model.maintenanceConfirmTitle, isPresented: $model.confirmDatabaseUpdate) {
-            Button(model.maintenanceConfirmButton) {
-                Task { @MainActor in
-                    await Task.yield()
-                    model.startDatabaseUpdate()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(model.maintenanceConfirmMessage)
+            )
+            .onAppear { buildStateIndex = false }
         }
         .sheet(isPresented: $model.isPresentingUpdate) {
             DatabaseUpdateSheet(model: model)
@@ -206,11 +204,12 @@ struct ContentView: View {
         .background(Color.orange.opacity(0.12))
     }
 
-    private var databaseNoticePresented: Binding<Bool> {
+    private var databasePromptPresented: Binding<Bool> {
         Binding(
-            get: { model.databaseNotice != nil },
+            get: { model.confirmDatabaseUpdate || model.databaseNotice != nil },
             set: { isPresented in
                 if !isPresented {
+                    model.confirmDatabaseUpdate = false
                     model.databaseNotice = nil
                 }
             }

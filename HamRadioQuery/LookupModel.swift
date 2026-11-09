@@ -296,7 +296,7 @@ final class LookupModel {
         freshness = LicenseStore.freshness()
     }
 
-    func startDatabaseUpdate() {
+    func startDatabaseUpdate(stateIndex: Bool = false) {
         guard !isUpdatingDatabase, !isSearching else { return }
         let session = DatabaseUpdateSession()
         databaseUpdateSession = session
@@ -314,7 +314,12 @@ final class LookupModel {
         NSApp.windows.first { $0.frameAutosaveName.contains("WindowGroup") }?.makeKeyAndOrderFront(nil)
         Task {
             do {
-                try await DatabaseUpdater.update(engine: engine, settings: settings, session: session) { snapshot in
+                try await DatabaseUpdater.update(
+                    engine: engine,
+                    settings: settings,
+                    session: session,
+                    stateIndex: stateIndex
+                ) { snapshot in
                     self.updateStatus = snapshot.status
                     self.updateFraction = snapshot.fraction
                     self.updateDetail = snapshot.detail

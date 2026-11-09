@@ -51,7 +51,6 @@ enum DatabaseSchema {
     CREATE INDEX en_first_name_last_name_index ON en (first_name, last_name);
     CREATE INDEX en_last_name_index ON en (last_name);
     CREATE INDEX en_city ON en (city);
-    CREATE INDEX en_state_name_index ON en (state, last_name, first_name);
     CREATE INDEX hd_sys_id_index ON hd (sys_id, license_status);
     CREATE INDEX am_sys_id_index ON am (sys_id, operator_class, region_code);
     CREATE INDEX dmr_call_sign_index ON dmr (call_sign, radio_id);
@@ -79,9 +78,12 @@ enum DatabaseSchema {
         """
     }
 
-    static func finishScript(importedAt: String) -> String {
-        """
-        \(createIndexes)
+    static let stateNameIndex = "CREATE INDEX en_state_name_index ON en (state, last_name, first_name);"
+
+    static func finishScript(importedAt: String, stateIndex: Bool = false) -> String {
+        let indexes = stateIndex ? createIndexes + "\n" + stateNameIndex : createIndexes
+        return """
+        \(indexes)
         INSERT INTO app_info (imported_at) VALUES (\(sqlString(importedAt)));
         SELECT COUNT(*) FROM en;
         """
@@ -127,8 +129,8 @@ enum DatabaseSchema {
         return "'\(escaped)'"
     }
 
-    static func licenseSQL(database: String, hd: String, en: String, am: String) -> String {
-        """
+    static func licenseSQL(database: String, hd: String, en: String, am: String, stateIndex: Bool = false) -> String {
+        let sql = """
         CREATE DATABASE IF NOT EXISTS \(quotedIdentifier(database));
         USE \(quotedIdentifier(database));
 
@@ -153,6 +155,8 @@ enum DatabaseSchema {
         FIELDS TERMINATED BY '|'
         LINES TERMINATED BY '\\n';
         """
+        guard stateIndex else { return sql }
+        return sql + "\n" + stateNameIndex + "\n"
     }
 
     static func dmrSQL(database: String, csv: String) -> String {
@@ -184,8 +188,8 @@ enum DatabaseSchema {
         "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
-    static func postgresLicenseSQL(hd: String, en: String, am: String) -> String {
-        """
+    static func postgresLicenseSQL(hd: String, en: String, am: String, stateIndex: Bool = false) -> String {
+        let sql = """
         DROP TABLE IF EXISTS hd;
         DROP TABLE IF EXISTS en;
         DROP TABLE IF EXISTS am;
@@ -202,10 +206,11 @@ enum DatabaseSchema {
         CREATE INDEX en_first_name_last_name_index ON en (first_name, last_name);
         CREATE INDEX en_last_name_index ON en (last_name);
         CREATE INDEX en_city ON en (city);
-        CREATE INDEX en_state_name_index ON en (state, last_name, first_name);
         CREATE INDEX hd_sys_id_index ON hd (sys_id, license_status);
         CREATE INDEX am_sys_id_index ON am (sys_id, operator_class, region_code);
         """
+        guard stateIndex else { return sql }
+        return sql + "\n" + stateNameIndex + "\n"
     }
 
     static func postgresDmrSQL(csv: String) -> String {
@@ -350,7 +355,6 @@ enum DatabaseSchema {
     CREATE INDEX en_first_name_last_name_index ON en (first_name, last_name);
     CREATE INDEX en_last_name_index ON en (last_name);
     CREATE INDEX en_city ON en (city);
-    CREATE INDEX en_state_name_index ON en (state, last_name, first_name);
     CREATE INDEX hd_sys_id_index ON hd (sys_id, license_status);
     CREATE INDEX am_sys_id_index ON am (sys_id, operator_class, region_code);
     """
