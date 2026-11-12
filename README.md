@@ -4,6 +4,8 @@ Ham Radio Lookup is a macOS app for searching United States amateur radio licens
 
 A cross-platform Electron app that performs the same operations is at [github.com/deverl/ham_radio_lookup](https://github.com/deverl/ham_radio_lookup).
 
+A native macOS app for searching GMRS licenses is at [github.com/deverl/gmrs_query](https://github.com/deverl/gmrs_query).
+
 The window is titled **Ham Radio Lookup**. The Xcode project and the app bundle are named `HamRadioQuery` (`us.ds6.HamRadioQuery`).
 
 ## What you can look up
