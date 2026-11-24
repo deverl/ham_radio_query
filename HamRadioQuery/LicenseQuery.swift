@@ -2,6 +2,8 @@ import Foundation
 
 struct LicenseQuery: Equatable, Sendable {
     var callSign: String
+    var frn: String = ""
+    var dmrID: String = ""
     var firstName: String
     var lastName: String
     var city: String
@@ -12,6 +14,8 @@ struct LicenseQuery: Equatable, Sendable {
 
     var hasCriteria: Bool {
         !Self.trimmed(callSign).isEmpty
+            || !Self.trimmed(frn).isEmpty
+            || !Self.trimmed(dmrID).isEmpty
             || !Self.trimmed(firstName).isEmpty
             || !Self.trimmed(lastName).isEmpty
             || !Self.trimmed(city).isEmpty
@@ -28,18 +32,20 @@ struct SQLStatement: Equatable, Sendable {
     var parameters: [String]
 }
 
-/// The same search the React app sends to `fcc/server/fccapp.py`.
-/// Call sign and state are exact. First name, last name, and city are prefixes.
+/// Call sign, FRN, DMR ID, and state are exact. First name, last name, and city are prefixes.
 /// An empty license-status or operator-class set does not filter that column.
 enum LicenseSQL {
     static func statement(for query: LicenseQuery, engine: DatabaseEngine = .sqlite) -> SQLStatement? {
         let callSign = LicenseQuery.trimmed(query.callSign).uppercased()
+        let frn = LicenseQuery.trimmed(query.frn)
+        let dmrID = LicenseQuery.trimmed(query.dmrID)
         let firstName = LicenseQuery.trimmed(query.firstName)
         let lastName = LicenseQuery.trimmed(query.lastName)
         let city = LicenseQuery.trimmed(query.city)
         let state = LicenseQuery.trimmed(query.state).uppercased()
 
-        if callSign.isEmpty && firstName.isEmpty && lastName.isEmpty && city.isEmpty && state.isEmpty {
+        if callSign.isEmpty && frn.isEmpty && dmrID.isEmpty
+            && firstName.isEmpty && lastName.isEmpty && city.isEmpty && state.isEmpty {
             return nil
         }
 
@@ -58,6 +64,14 @@ enum LicenseSQL {
         if !callSign.isEmpty {
             clauses.append("en.call_sign = \(mark())")
             parameters.append(callSign)
+        }
+        if !frn.isEmpty {
+            clauses.append("en.frn = \(mark())")
+            parameters.append(frn)
+        }
+        if !dmrID.isEmpty {
+            clauses.append("dmr.radio_id = \(mark())")
+            parameters.append(dmrID)
         }
         if !firstName.isEmpty {
             clauses.append("en.first_name \(like) \(mark())" + sqlLikeEscape)
@@ -88,6 +102,7 @@ enum LicenseSQL {
             parameters.append(contentsOf: classes)
         }
 
+        let systemID = engine == .mysql ? "CAST(hd.sys_id AS CHAR)" : "CAST(hd.sys_id AS TEXT)"
         let sql = """
         SELECT en.call_sign AS call_sign,
                en.first_name AS first_name,
@@ -100,7 +115,8 @@ enum LicenseSQL {
                hd.license_status AS license_status,
                en.frn AS frn,
                am.region_code AS region_code,
-               \(nullFunction)(dmr.radio_id, '') AS dmr_id
+               \(nullFunction)(dmr.radio_id, '') AS dmr_id,
+               \(systemID) AS sys_id
         FROM en
         JOIN hd ON hd.sys_id = en.sys_id
         JOIN am ON am.sys_id = en.sys_id

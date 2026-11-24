@@ -77,6 +77,49 @@ struct QuerySQLTests {
         #expect(!whereClause.contains("operator_class"))
     }
 
+    @Test func frnAndDmrIDAreExact() throws {
+        let query = LicenseQuery(
+            callSign: "",
+            frn: " 0001234567 ",
+            dmrID: "3216068",
+            firstName: "",
+            lastName: "",
+            city: "",
+            state: "",
+            licenseStatuses: ["A"],
+            operatorClasses: [],
+            applyTitleCase: true
+        )
+        #expect(query.hasCriteria)
+        let statement = try #require(LicenseSQL.statement(for: query))
+        #expect(statement.sql.contains("en.frn = ?"))
+        #expect(statement.sql.contains("dmr.radio_id = ?"))
+        #expect(statement.sql.contains("CAST(hd.sys_id AS TEXT) AS sys_id"))
+        #expect(statement.parameters == ["0001234567", "3216068", "A"])
+
+        let postgres = try #require(LicenseSQL.statement(for: query, engine: .postgres))
+        #expect(postgres.sql.contains("en.frn = $1"))
+        #expect(postgres.sql.contains("dmr.radio_id = $2"))
+        #expect(postgres.sql.contains("CAST(hd.sys_id AS TEXT) AS sys_id"))
+
+        let mysql = try #require(LicenseSQL.statement(for: query, engine: .mysql))
+        #expect(mysql.sql.contains("CAST(hd.sys_id AS CHAR) AS sys_id"))
+        #expect(!mysql.sql.contains("AS TEXT"))
+    }
+
+    @Test func licenseLinkBuildsTheChosenPage() throws {
+        let qrz = try #require(LicenseLink.qrz.page(callSign: " w1aw ", systemID: "780866"))
+        #expect(qrz == .url(URL(string: "https://www.qrz.com/db/W1AW")!))
+        let radioID = try #require(LicenseLink.radioid.page(callSign: "W1AW", systemID: "780866"))
+        #expect(radioID == .url(URL(string: "https://radioid.net/database/search?callsign=W1AW")!))
+        let fcc = try #require(LicenseLink.fcc.page(callSign: "W1AW", systemID: " 780866 "))
+        #expect(fcc == .url(URL(string: "https://wireless2.fcc.gov/UlsApp/UlsSearch/license.jsp?licKey=780866")!))
+        #expect(LicenseLink.fcc.page(callSign: "W1AW", systemID: "") == nil)
+        #expect(LicenseLink.fcc.page(callSign: "W1AW", systemID: "780866;drop") == nil)
+        #expect(LicenseLink.qrz.page(callSign: "W1 AW", systemID: "780866") == nil)
+        #expect(LicenseLink.qrz.menuTitle == "Open This License at QRZ")
+    }
+
     @Test func titleCaseMatchesLicenseFormatting() {
         #expect(TitleCasing.apply("ARTHUR") == "Arthur")
         #expect(TitleCasing.apply("ARONSEN") == "Aronsen")

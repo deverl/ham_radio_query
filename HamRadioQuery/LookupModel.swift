@@ -6,10 +6,13 @@ import Observation
 @Observable
 final class LookupModel {
     var callSign = ""
+    var frn = ""
+    var dmrID = ""
     var firstName = ""
     var lastName = ""
     var city = ""
     var state = ""
+    var licenseLink = LicenseLink.load()
     var licenseStatuses: Set<String> = [LicenseStatus.active.rawValue]
     var operatorClasses: Set<String> = Set(OperatorClass.allCases.map(\.rawValue))
     var applyTitleCase = true
@@ -134,6 +137,8 @@ final class LookupModel {
     func clear() {
         generation += 1
         callSign = ""
+        frn = ""
+        dmrID = ""
         firstName = ""
         lastName = ""
         city = ""
@@ -171,11 +176,24 @@ final class LookupModel {
               let record = records.first(where: { $0.id == id })
         else { return }
         callSign = record.callSign
+        frn = ""
+        dmrID = ""
         firstName = ""
         lastName = ""
         city = ""
         state = ""
         search()
+    }
+
+    /// Opens the selected license at the site chosen in Settings.
+    func openLicense(_ ids: Set<LicenseRecord.ID>) {
+        guard ids.count == 1,
+              let record = records.first(where: { $0.id == ids.first }),
+              let page = licenseLink.page(callSign: record.callSign, systemID: record.systemID)
+        else { return }
+        if case .url(let url) = page {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     var maintenanceMenuTitle: String {
@@ -369,6 +387,8 @@ final class LookupModel {
     private func makeQuery() -> LicenseQuery {
         LicenseQuery(
             callSign: callSign,
+            frn: frn,
+            dmrID: dmrID,
             firstName: firstName,
             lastName: lastName,
             city: city,

@@ -22,7 +22,7 @@ enum MySQLLicenseDatabase {
     }
 
     static func search(_ query: LicenseQuery, settings: ConnectionSettings) async throws -> [LicenseRecord] {
-        guard let statement = LicenseSQL.statement(for: query) else { return [] }
+        guard let statement = LicenseSQL.statement(for: query, engine: .mysql) else { return [] }
         let settings = settings.normalized()
         let connection = try await open(settings)
         do {
@@ -119,7 +119,8 @@ enum MySQLLicenseDatabase {
             licenseStatus: value("license_status"),
             frn: value("frn"),
             regionCode: value("region_code"),
-            dmrID: value("dmr_id")
+            dmrID: value("dmr_id"),
+            systemID: value("sys_id")
         )
     }
 }

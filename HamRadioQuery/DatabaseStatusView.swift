@@ -14,6 +14,17 @@ struct DatabaseStatusView: View {
 
     var body: some View {
         Form {
+            Picker("Open a license at", selection: $model.licenseLink) {
+                ForEach(LicenseLink.allCases) { link in
+                    Text(link.title).tag(link)
+                }
+            }
+            .pickerStyle(.radioGroup)
+            .horizontalRadioGroupLayout()
+            .onChange(of: model.licenseLink) { _, newValue in
+                LicenseLink.save(newValue)
+            }
+
             Picker("Database", selection: $model.engine) {
                 Text("SQLite").tag(DatabaseEngine.sqlite)
                 Text("MySQL").tag(DatabaseEngine.mysql)
@@ -150,7 +161,7 @@ struct DatabaseStatusView: View {
 
     /// The settings window remembers a short frame. Grow it so the MySQL buttons stay on screen.
     private func fitSettingsWindow() {
-        let minimum: CGFloat = model.engine == .sqlite ? 340 : 680
+        let minimum: CGFloat = model.engine == .sqlite ? 430 : 760
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(50))
             guard let window = NSApp.windows.first(where: {

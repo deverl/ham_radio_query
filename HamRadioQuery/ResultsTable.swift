@@ -31,6 +31,10 @@ struct ResultsTable: View {
                 model.searchCallSigns(ids)
             }
             .disabled(ids.count != 1)
+            Button(model.licenseLink.menuTitle) {
+                model.openLicense(ids)
+            }
+            .disabled(ids.count != 1)
         } primaryAction: { ids in
             model.searchCallSigns(ids)
         }

@@ -19,6 +19,12 @@ struct SearchPanel: View {
                     Color.clear.frame(height: 1)
                         .accessibilityHidden(true)
                 }
+                GridRow {
+                    field("FRN", prompt: "Exact", text: $model.frn, monospaced: true)
+                    field("DMR ID", prompt: "Exact", text: $model.dmrID, monospaced: true)
+                    Color.clear.frame(height: 1)
+                        .accessibilityHidden(true)
+                }
             }
 
             HStack(alignment: .center, spacing: 12) {
@@ -89,7 +95,7 @@ struct SearchPanel: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Text("Call sign matches the whole value. Name and city match from the start.")
+                    Text("Call sign, FRN, and DMR ID match the whole value. Name and city match from the start.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

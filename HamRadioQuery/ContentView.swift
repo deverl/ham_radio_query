@@ -138,7 +138,7 @@ struct ContentView: View {
             ContentUnavailableView(
                 "Enter a Search",
                 systemImage: "text.magnifyingglass",
-                description: Text("Enter a call sign, name, city, or state.")
+                description: Text("Enter a call sign, name, city, state, FRN, or DMR ID.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.searchUnavailable && model.records.isEmpty {
@@ -157,7 +157,7 @@ struct ContentView: View {
             ContentUnavailableView {
                 Label("Ham Radio Lookup", systemImage: "antenna.radiowaves.left.and.right")
             } description: {
-                Text("Search FCC license records by call sign, name, city, or state.")
+                Text("Search FCC license records by call sign, name, city, state, FRN, or DMR ID.")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.filteredRecords.isEmpty {

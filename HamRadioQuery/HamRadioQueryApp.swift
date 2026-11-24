@@ -46,6 +46,10 @@ struct LookupCommands: Commands {
             }
             .keyboardShortcut("c", modifiers: [.command, .shift])
             .disabled(model.selection.isEmpty)
+            Button(model.licenseLink.menuTitle) {
+                model.openLicense(model.selection)
+            }
+            .disabled(model.selection.count != 1)
         }
 
         CommandMenu("Tools") {

@@ -14,6 +14,8 @@ struct LicenseRecord: Identifiable, Hashable, Sendable {
     let frn: String
     let regionCode: String
     let dmrID: String
+    /// FCC unique system identifier. This is the `licKey` on the license detail page.
+    let systemID: String
 
     var operatorClassName: String { OperatorClass.title(for: operatorClass) }
     var licenseStatusName: String { LicenseStatus.title(for: licenseStatus) }
@@ -31,7 +33,8 @@ struct LicenseRecord: Identifiable, Hashable, Sendable {
         licenseStatus: String,
         frn: String,
         regionCode: String,
-        dmrID: String
+        dmrID: String,
+        systemID: String = ""
     ) {
         self.id = id
         self.callSign = callSign
@@ -46,6 +49,7 @@ struct LicenseRecord: Identifiable, Hashable, Sendable {
         self.frn = frn
         self.regionCode = regionCode
         self.dmrID = dmrID
+        self.systemID = systemID
     }
 
     /// Case-insensitive match against every value shown in the table, plus the

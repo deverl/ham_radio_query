@@ -124,7 +124,8 @@ enum PostgresLicenseDatabase {
             licenseStatus: value("license_status"),
             frn: value("frn"),
             regionCode: value("region_code"),
-            dmrID: value("dmr_id")
+            dmrID: value("dmr_id"),
+            systemID: value("sys_id")
         )
     }
 }
